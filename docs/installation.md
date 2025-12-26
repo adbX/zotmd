@@ -5,7 +5,7 @@
 [uv](https://docs.astral.sh/uv/) is the fastest and most modern Python package installer.
 
 ```bash
-# Install as a tool (isolated environment)
+# Install as a tool
 uv tool install zotmd
 
 # Upgrade to latest version

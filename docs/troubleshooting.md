@@ -399,7 +399,7 @@ Large library with many annotations.
 If you encounter an issue not listed here:
 
 1. **Check existing issues:**
-   [github.com/adhithyabhaskar/zotmd/issues](https://github.com/adhithyabhaskar/zotmd/issues)
+   [github.com/adbX/zotmd/issues](https://github.com/adbX/zotmd/issues)
 
 2. **Run with verbose logging:**
    ```bash
