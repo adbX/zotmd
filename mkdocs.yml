@@ -1,32 +1,38 @@
 site_name: ZotMD Documentation
 site_description: Sync Zotero library to Markdown files
-site_url: https://github.com/adhithyabhaskar/zotmd
+site_url: https://github.com/adbX/zotmd
 
-repo_name: adhithyabhaskar/zotmd
-repo_url: https://github.com/adhithyabhaskar/zotmd
+repo_name: adbX/zotmd
+repo_url: https://github.com/adbX/zotmd
 
 theme:
   name: material
   palette:
-    - scheme: default
-      primary: indigo
-      accent: indigo
-      toggle:
-        icon: material/brightness-7
-        name: Switch to dark mode
     - scheme: slate
-      primary: indigo
-      accent: indigo
+      primary: brown
+      accent: amber
       toggle:
         icon: material/brightness-4
         name: Switch to light mode
+    - scheme: default
+      primary: brown
+      accent: amber
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
   features:
-    - navigation.tabs
-    - navigation.sections
+    - navigation.instant
+    - navigation.instant.prefetch
+    # - navigation.tabs
+    # - navigation.sections
+    - navigation.top
     - navigation.expand
+    - navigation.path
+    - navigation.tracking
     - search.suggest
     - search.highlight
     - content.code.copy
+    - toc.follow
 
 nav:
   - Home: index.md
@@ -43,14 +49,23 @@ markdown_extensions:
       anchor_linenums: true
   - pymdownx.inlinehilite
   - pymdownx.snippets
-  - pymdownx.superfences
-  - admonition
-  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
   - pymdownx.tabbed:
       alternate_style: true
+  - admonition
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
   - attr_list
   - md_in_html
   - tables
+  - toc:
+      permalink: true
 
 plugins:
   - search
