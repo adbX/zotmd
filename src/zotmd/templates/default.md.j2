@@ -1,0 +1,89 @@
+---
+title: "{{ item.title | replace('"', '\\"') }}"
+citekey: "{{ item.citation_key }}"
+itemType: {{ item.item_type }}
+venue: "{{ item.publication_title or item.publisher or '' }}"
+year: {{ year or 'null' }}
+dateAdded: {{ date_added_simple or 'null' }}
+authors:
+{%- for author in authors_list %}
+  - "{{ author }}"
+{%- endfor %}
+{%- if not authors_list %}
+  - "Unknown Author"
+{%- endif %}
+status: unread
+tags:
+{%- for tag in item.tags %}
+  - {{ tag | sanitize_tag }}
+{%- endfor %}
+  - references
+links:
+  - "{{ item.pdf_link }}"
+{%- if item.url %}
+  - "{{ item.url }}"
+{%- endif %}
+{%- if item.doi %}
+  - "https://doi.org/{{ item.doi }}"
+{%- endif %}
+aliases:
+  - "{{ clean_title }}"
+  - "{{ item.citation_key }}"
+---
+
+# @{{ item.citation_key }}
+{% if item.abstract %}
+
+> [!abstract]-
+> {{ item.abstract }}
+{% endif %}
+
+# Notes
+
+%% begin notes %%
+{{ preserved_notes }}
+%% end notes %%
+
+# Annotations
+
+%% begin annotations %%
+{%- if annotations and annotations|length > 0 %}
+{%- for annotation in annotations %}
+{%- if annotation.text %}
+- <mark class="hltr-{{ annotation.color_category }}">{{ annotation.text | escape_quotes }}</mark> [Page {{ annotation.page_label or '?' }}](zotero://open-pdf/library/items/{{ attachment_key or item.key }}?page={{ annotation.page_index or 0 }}&annotation={{ annotation.key }})
+{%- endif %}
+{%- if annotation.comment %}
+  - {{ annotation.comment }}
+{%- endif %}
+{%- endfor %}
+{%- endif %}
+%% end annotations %%
+
+## Related Literature
+
+```dataview
+TABLE year, venue, status
+FROM "references/"
+WHERE contains(file.inlinks, this.file.link) OR contains(file.outlinks, this.file.link)
+```
+
+## Annotation Color Key
+
+| <mark class="hltr-gray">Highlight Color</mark> | Meaning              |
+| ---------------------------------------------- | -------------------- |
+| <mark class="hltr-red">Red</mark>              | Important            |
+| <mark class="hltr-purple">Purple</mark>        | General              |
+| <mark class="hltr-green">Green</mark>          | Potential References |
+| <mark class="hltr-orange">Orange</mark>        | Applications         |
+| <mark class="hltr-yellow">Yellow</mark>        | Technical Details    |
+| <mark class="hltr-blue">Blue</mark>            | Personal Insights    |
+
+{% if item.publication_title or item.volume or item.issue or item.pages or item.publisher %}
+
+## Formatted bibliography
+[1]
+
+{{ formatted_creators }}, "{{ item.title }}," _{{ item.publication_title or 'Unknown' }}_{%- if item.volume %}, vol. {{ item.volume }}{%- endif %}{%- if item.issue %}, no. {{ item.issue }}{%- endif %}{%- if item.pages %}, pp. {{ item.pages }}{%- endif %}{%- if item.date %}, {{ item.date }}{%- endif %}{%- if item.doi %}, doi: [{{ item.doi }}](https://doi.org/{{ item.doi }}){%- endif %}.
+{% endif %}
+
+%% Import Date: {{ now.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3] }}+03:00 %%

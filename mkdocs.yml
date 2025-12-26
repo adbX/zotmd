@@ -1,0 +1,56 @@
+site_name: ZotMD Documentation
+site_description: Sync Zotero library to Markdown files
+site_url: https://github.com/adhithyabhaskar/zotmd
+
+repo_name: adhithyabhaskar/zotmd
+repo_url: https://github.com/adhithyabhaskar/zotmd
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+
+nav:
+  - Home: index.md
+  - Getting Started:
+      - Installation: installation.md
+      - Setup: getting-started.md
+  - Usage:
+      - Commands: usage.md
+      - Configuration: configuration.md
+  - Troubleshooting: troubleshooting.md
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - admonition
+  - pymdownx.details
+  - pymdownx.tabbed:
+      alternate_style: true
+  - attr_list
+  - md_in_html
+  - tables
+
+plugins:
+  - search

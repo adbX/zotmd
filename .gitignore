@@ -1,0 +1,50 @@
+# Python-generated files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+build/
+dist/
+wheels/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# Environment files
+.env
+
+# Project data
+*.sqlite
+zotero_sync.log
+references/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Testing
+.coverage
+.pytest_cache/
+htmlcov/
+.tox/
+.nox/
+
+# Documentation
+site/
+docs/_build/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude/Cursor
+.claude/
+.cursor/
+CLAUDE.md
