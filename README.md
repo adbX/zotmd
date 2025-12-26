@@ -96,24 +96,7 @@ aliases:
 
 ## Related Literature
 
-```dataview
-TABLE year, venue, status
-FROM "references/"
-WHERE contains(file.inlinks, this.file.link) OR contains(file.outlinks, this.file.link)
-```
-
 ## Annotation Color Key
-
-| <mark class="hltr-gray">Highlight Color</mark> | Meaning              |
-| ---------------------------------------------- | -------------------- |
-| <mark class="hltr-red">Red</mark>              | Important            |
-| <mark class="hltr-purple">Purple</mark>        | General              |
-| <mark class="hltr-green">Green</mark>          | Potential References |
-| <mark class="hltr-orange">Orange</mark>        | Applications         |
-| <mark class="hltr-yellow">Yellow</mark>        | Technical Details    |
-| <mark class="hltr-blue">Blue</mark>            | Personal Insights    |
-
-
 
 ## Formatted bibliography
 [1]
