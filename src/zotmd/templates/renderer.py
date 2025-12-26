@@ -171,8 +171,8 @@ class TemplateRenderer:
         Sanitize a tag for Obsidian compatibility.
 
         Preserves slashes for nested tags while handling spaces properly:
-        - Removes spaces around slashes: "tools / docker" → "tools/docker"
-        - Replaces remaining spaces with underscores: "machine learning" → "machine_learning"
+        - Removes spaces around slashes: "tools / docker" -> "tools/docker"
+        - Replaces remaining spaces with underscores: "machine learning" -> "machine_learning"
 
         Args:
             tag: Original tag from Zotero

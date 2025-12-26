@@ -33,7 +33,5 @@ dev = [
     "tomli-w>=1.2.0",
 ]
 docs = [
-    "mkdocs>=1.6.1",
-    "mkdocs-material>=9.7.1",
-    "mkdocstrings-python>=2.0.1",
+    "zensical>=0.0.15",
 ]

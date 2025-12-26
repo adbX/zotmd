@@ -69,7 +69,7 @@ $ zotmd status
 **Solutions:**
 
 1. **Enable API access:**
-   - Zotero → Settings → Advanced → Miscellaneous
+   - Zotero -> Settings -> Advanced -> Miscellaneous
    - Check "Allow other applications to access Zotero"
 
 2. **Verify credentials:**
@@ -128,11 +128,11 @@ Skipped 45 items without citation keys
 
 1. **Install Better BibTeX:**
    - Download: [retorque.re/zotero-better-bibtex](https://retorque.re/zotero-better-bibtex/)
-   - Zotero → Tools → Add-ons → Install from File
+   - Zotero -> Tools -> Add-ons -> Install from File
 
 2. **Generate citation keys:**
    - Select all items in Zotero
-   - Right-click → Better BibTeX → Refresh BibTeX key
+   - Right-click -> Better BibTeX -> Refresh BibTeX key
 
 3. **Re-sync:**
    ```bash
@@ -282,11 +282,11 @@ Citation keys longer than filesystem limit (255 chars).
 **Solution:**
 
 1. **Shorten citation key in Better BibTeX:**
-   - Right-click item → Better BibTeX → Pin/Set citation key
+   - Right-click item -> Better BibTeX -> Pin/Set citation key
    - Enter shorter key
 
 2. **Change citation key pattern:**
-   - Zotero Settings → Better BibTeX → Citation Keys
+   - Zotero Settings -> Better BibTeX -> Citation Keys
    - Use shorter pattern (e.g., `[auth:lower][year]`)
 
 ### Special characters in filenames
