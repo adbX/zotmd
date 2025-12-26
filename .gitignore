@@ -48,3 +48,6 @@ Thumbs.db
 .claude/
 .cursor/
 CLAUDE.md
+
+.mypy_cache/
+.ruff_cache/
