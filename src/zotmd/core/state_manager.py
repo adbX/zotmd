@@ -1,10 +1,13 @@
 """SQLite database manager for tracking sync state."""
 
+import logging
 import sqlite3
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, List
 from dataclasses import dataclass
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -39,6 +42,15 @@ class AnnotationState:
     synced_at: Optional[datetime] = None
 
 
+@dataclass
+class TemplateVersion:
+    """Represents a recorded template version."""
+
+    template_hash: str
+    template_path: str  # "built-in" or path to custom template
+    recorded_at: Optional[datetime] = None
+
+
 class StateManager:
     """Manages SQLite database for sync state tracking."""
 
@@ -55,7 +67,10 @@ class StateManager:
 
     def _initialize_database(self) -> None:
         """Create database tables if they don't exist."""
-        self.conn = sqlite3.connect(self.db_path)
+        # check_same_thread=False allows the connection to be used from
+        # multiple threads. Thread safety is ensured by using locks in
+        # the SyncEngine when accessing the database.
+        self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row  # Access columns by name
 
         cursor = self.conn.cursor()
@@ -72,6 +87,7 @@ class StateManager:
                 last_synced_at TIMESTAMP NOT NULL,
                 sync_status TEXT NOT NULL,
                 content_hash TEXT,
+                item_json TEXT,
                 created_at TIMESTAMP NOT NULL,
                 updated_at TIMESTAMP NOT NULL
             )
@@ -106,7 +122,10 @@ class StateManager:
                 last_full_sync TIMESTAMP,
                 last_incremental_sync TIMESTAMP,
                 total_items_synced INTEGER DEFAULT 0,
-                total_annotations_synced INTEGER DEFAULT 0
+                total_annotations_synced INTEGER DEFAULT 0,
+                template_hash TEXT,
+                template_path TEXT,
+                template_version_at TIMESTAMP
             )
         """
         )
@@ -132,6 +151,32 @@ class StateManager:
             ON sync_annotations(parent_item_key)
         """
         )
+
+        # Migration: Add new columns to existing databases if needed
+        cursor.execute("PRAGMA table_info(sync_metadata)")
+        metadata_columns = {row[1] for row in cursor.fetchall()}
+
+        if "template_hash" not in metadata_columns:
+            cursor.execute("ALTER TABLE sync_metadata ADD COLUMN template_hash TEXT")
+            logger.info("Added template_hash column to sync_metadata")
+
+        if "template_path" not in metadata_columns:
+            cursor.execute("ALTER TABLE sync_metadata ADD COLUMN template_path TEXT")
+            logger.info("Added template_path column to sync_metadata")
+
+        if "template_version_at" not in metadata_columns:
+            cursor.execute(
+                "ALTER TABLE sync_metadata ADD COLUMN template_version_at TIMESTAMP"
+            )
+            logger.info("Added template_version_at column to sync_metadata")
+
+        # Migration: Add item_json column to sync_items if needed
+        cursor.execute("PRAGMA table_info(sync_items)")
+        items_columns = {row[1] for row in cursor.fetchall()}
+
+        if "item_json" not in items_columns:
+            cursor.execute("ALTER TABLE sync_items ADD COLUMN item_json TEXT")
+            logger.info("Added item_json column to sync_items")
 
         # Initialize sync_metadata if empty
         cursor.execute("SELECT COUNT(*) FROM sync_metadata")
@@ -231,8 +276,16 @@ class StateManager:
             ),
         )
 
-    def upsert_item(self, item_state: ItemState) -> None:
-        """Insert or update item sync state."""
+    def upsert_item(
+        self, item_state: ItemState, item_json: Optional[str] = None
+    ) -> None:
+        """
+        Insert or update item sync state.
+
+        Args:
+            item_state: ItemState object with sync state
+            item_json: Optional JSON string of full Zotero API response
+        """
         cursor = self.conn.cursor()
         now = datetime.now()
 
@@ -251,6 +304,7 @@ class StateManager:
                     last_synced_at = ?,
                     sync_status = ?,
                     content_hash = ?,
+                    item_json = ?,
                     updated_at = ?
                 WHERE zotero_key = ?
             """,
@@ -262,6 +316,7 @@ class StateManager:
                     item_state.last_synced_at,
                     item_state.sync_status,
                     item_state.content_hash,
+                    item_json,
                     now,
                     item_state.zotero_key,
                 ),
@@ -273,8 +328,8 @@ class StateManager:
                 INSERT INTO sync_items (
                     zotero_key, citation_key, item_type, zotero_version,
                     file_path, last_synced_at, sync_status, content_hash,
-                    created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    item_json, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
                 (
                     item_state.zotero_key,
@@ -285,6 +340,7 @@ class StateManager:
                     item_state.last_synced_at,
                     item_state.sync_status,
                     item_state.content_hash,
+                    item_json,
                     now,
                     now,
                 ),
@@ -441,3 +497,51 @@ class StateManager:
             "last_full_sync": meta["last_full_sync"] if meta else None,
             "last_incremental_sync": meta["last_incremental_sync"] if meta else None,
         }
+
+    # Template versioning
+
+    def get_template_version(self) -> Optional[TemplateVersion]:
+        """
+        Get stored template version from metadata.
+
+        Returns:
+            TemplateVersion object or None if not set
+        """
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            SELECT template_hash, template_path, template_version_at
+            FROM sync_metadata WHERE id = 1
+            """
+        )
+        row = cursor.fetchone()
+
+        if not row or not row[0]:
+            return None
+
+        return TemplateVersion(
+            template_hash=row[0],
+            template_path=row[1],
+            recorded_at=(datetime.fromisoformat(row[2]) if row[2] else None),
+        )
+
+    def record_template_version(self, template_hash: str, template_path: str) -> None:
+        """
+        Record template version after successful sync.
+
+        Args:
+            template_hash: SHA256 hash of template content
+            template_path: Path identifier ("built-in" or path to custom template)
+        """
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            UPDATE sync_metadata
+            SET template_hash = ?,
+                template_path = ?,
+                template_version_at = ?
+            WHERE id = 1
+            """,
+            (template_hash, template_path, datetime.now()),
+        )
+        self.conn.commit()

@@ -4,8 +4,14 @@ from typing import List, Optional
 import logging
 from pyzotero import zotero
 
+from ..utils.rate_limiter import RateLimiter
+
 
 logger = logging.getLogger(__name__)
+
+# Shared rate limiter for all ZoteroClient instances
+# Zotero API limit is 120 requests per minute
+_rate_limiter = RateLimiter(max_requests=120, window_seconds=60.0, safety_margin=0.8)
 
 
 class ZoteroClient:
@@ -47,6 +53,7 @@ class ZoteroClient:
             Exception: If API request fails
         """
         try:
+            _rate_limiter.acquire()
             version = self.zot.last_modified_version()
             logger.debug(f"Current library version: {version}")
             return version
@@ -69,6 +76,7 @@ class ZoteroClient:
         """
         try:
             logger.info(f"Fetching all items (batch size: {batch_size})")
+            _rate_limiter.acquire()
 
             # Use pyzotero's everything() method for automatic pagination
             items = self.zot.everything(self.zot.top(limit=batch_size))
@@ -98,6 +106,7 @@ class ZoteroClient:
         """
         try:
             logger.info(f"Fetching items since version {version}")
+            _rate_limiter.acquire()
 
             # Fetch items modified since version
             items = self.zot.everything(self.zot.top(limit=batch_size, since=version))
@@ -123,6 +132,7 @@ class ZoteroClient:
             Exception: If API request fails
         """
         try:
+            _rate_limiter.acquire()
             children = self.zot.children(item_key)
             logger.debug(f"Fetched {len(children)} children for item {item_key}")
             return children
@@ -228,6 +238,7 @@ class ZoteroClient:
         """
         try:
             logger.info("Fetching all annotations")
+            _rate_limiter.acquire()
 
             # Fetch all items of type 'annotation'
             annotations = self.zot.everything(
@@ -239,6 +250,37 @@ class ZoteroClient:
 
         except Exception as e:
             logger.error(f"Failed to fetch all annotations: {e}")
+            raise
+
+    def get_all_attachments(self, batch_size: int = 100) -> List[dict]:
+        """
+        Fetch all attachments in the library.
+
+        Used for batch processing to build attachment -> parent item mappings.
+
+        Args:
+            batch_size: Number of items per batch
+
+        Returns:
+            List of all attachment dictionaries
+
+        Raises:
+            Exception: If API request fails
+        """
+        try:
+            logger.info("Fetching all attachments")
+            _rate_limiter.acquire()
+
+            # Fetch all items of type 'attachment'
+            attachments = self.zot.everything(
+                self.zot.items(itemType="attachment", limit=batch_size)
+            )
+
+            logger.info(f"Fetched {len(attachments)} total attachments")
+            return attachments
+
+        except Exception as e:
+            logger.error(f"Failed to fetch all attachments: {e}")
             raise
 
     def get_deleted_items(self, since_version: int) -> dict:
@@ -256,6 +298,7 @@ class ZoteroClient:
         """
         try:
             logger.info(f"Fetching deleted items since version {since_version}")
+            _rate_limiter.acquire()
             deleted = self.zot.deleted(since=since_version)
 
             # Extract item keys from deleted

@@ -87,6 +87,9 @@ class TemplateRenderer:
         Args:
             template_path: Path to custom template file. If None, uses default template.
         """
+        # Store template path for later reference
+        self.template_path_used = template_path
+
         if template_path and template_path.exists():
             # Load custom template from file
             template_dir = template_path.parent
@@ -281,3 +284,40 @@ class TemplateRenderer:
             Markdown formatted annotation
         """
         return annotation.to_markdown(attachment_key)
+
+    def get_template_hash(self) -> str:
+        """
+        Get SHA256 hash of the current template.
+
+        Returns:
+            SHA256 hash of template source content
+        """
+        # Import here to avoid circular dependency
+        import sys
+        import os
+
+        # For built-in templates, we need to read the actual file
+        # because template.source may not be available in all Jinja2 versions
+        if self.template_path_used and self.template_path_used.exists():
+            # Custom template - read from file
+            template_content = self.template_path_used.read_text(encoding="utf-8")
+        else:
+            # Built-in template - read from templates directory
+            template_file = Path(__file__).parent / "default.md.j2"
+            template_content = template_file.read_text(encoding="utf-8")
+
+        # Import TemplateChangeDetector and compute hash
+        from ..core.template_manager import TemplateChangeDetector
+
+        return TemplateChangeDetector.compute_template_hash(template_content)
+
+    def get_template_path_identifier(self) -> str:
+        """
+        Get identifier for the current template.
+
+        Returns:
+            "built-in" or absolute path to custom template
+        """
+        from ..core.template_manager import TemplateChangeDetector
+
+        return TemplateChangeDetector.get_template_identifier(self.template_path_used)
