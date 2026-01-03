@@ -13,11 +13,11 @@ authors:
   - "Unknown Author"
 {%- endif %}
 status: unread
+category: reference
 tags:
 {%- for tag in item.tags %}
   - {{ tag | sanitize_tag }}
 {%- endfor %}
-  - references
 links:
   - "{{ item.pdf_link }}"
 {%- if item.url %}
