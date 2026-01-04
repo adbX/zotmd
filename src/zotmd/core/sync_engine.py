@@ -107,56 +107,114 @@ class SyncEngine:
 
         logger.info("SyncEngine initialized")
 
-    def _build_batch_data(self) -> BatchData:
+    def _build_batch_data(self, show_progress: bool = True) -> BatchData:
         """
         Pre-fetch all annotations and attachments in batch.
 
         This dramatically reduces API calls by fetching everything upfront
         instead of making per-item requests.
 
+        Args:
+            show_progress: Show progress spinner during fetch
+
         Returns:
             BatchData with pre-fetched annotations and attachment mappings
         """
         batch_data = BatchData()
 
-        # Fetch all annotations in batch
-        logger.info("Batch fetching all annotations...")
-        all_annotations = self.zotero.get_all_annotations()
-        logger.info(f"Fetched {len(all_annotations)} annotations in batch")
+        if show_progress:
+            # Use unknown mode (no total) for indeterminate progress
+            with alive_bar(
+                title="Fetching library data",
+                monitor=False,  # Don't show "it/s" for unknown mode
+                stats=False,  # Don't show stats
+                enrich_print=False,
+            ) as bar:
+                # Fetch all annotations
+                bar.text = "-> annotations..."
+                logger.info("Batch fetching all annotations...")
+                all_annotations = self.zotero.get_all_annotations()
+                logger.info(f"Fetched {len(all_annotations)} annotations in batch")
+                bar.text = f"-> fetched {len(all_annotations)} annotations"
+                bar()
 
-        # Fetch all attachments in batch
-        logger.info("Batch fetching all attachments...")
-        all_attachments = self.zotero.get_all_attachments()
-        logger.info(f"Fetched {len(all_attachments)} attachments in batch")
+                # Fetch all attachments
+                bar.text = "-> attachments..."
+                logger.info("Batch fetching all attachments...")
+                all_attachments = self.zotero.get_all_attachments()
+                logger.info(f"Fetched {len(all_attachments)} attachments in batch")
+                bar.text = f"-> fetched {len(all_attachments)} attachments"
+                bar()
 
-        # Build attachment_key -> parent_item_key mapping
-        attachment_to_parent: Dict[str, str] = {}
-        for attachment in all_attachments:
-            attachment_key = attachment.get("key")
-            parent_key = attachment.get("data", {}).get("parentItem")
-            content_type = attachment.get("data", {}).get("contentType", "")
+                # Build attachment_key -> parent_item_key mapping
+                bar.text = "-> building mappings..."
+                attachment_to_parent: Dict[str, str] = {}
+                for attachment in all_attachments:
+                    attachment_key = attachment.get("key")
+                    parent_key = attachment.get("data", {}).get("parentItem")
+                    content_type = attachment.get("data", {}).get("contentType", "")
 
-            if attachment_key and parent_key:
-                attachment_to_parent[attachment_key] = parent_key
-                # Track PDF attachment keys for items
-                if "pdf" in content_type.lower():
-                    batch_data.attachment_keys[parent_key] = attachment_key
+                    if attachment_key and parent_key:
+                        attachment_to_parent[attachment_key] = parent_key
+                        # Track PDF attachment keys for items
+                        if "pdf" in content_type.lower():
+                            batch_data.attachment_keys[parent_key] = attachment_key
 
-        # Build item_key -> [annotations] mapping
-        for annotation_data in all_annotations:
-            annotation = Annotation.from_api_response(annotation_data)
-            # annotation.parent_key is the attachment key
-            parent_item_key = attachment_to_parent.get(annotation.parent_key)
+                # Build item_key -> [annotations] mapping
+                for annotation_data in all_annotations:
+                    annotation = Annotation.from_api_response(annotation_data)
+                    # annotation.parent_key is the attachment key
+                    parent_item_key = attachment_to_parent.get(annotation.parent_key)
 
-            if parent_item_key:
-                if parent_item_key not in batch_data.annotations_by_item:
-                    batch_data.annotations_by_item[parent_item_key] = []
-                batch_data.annotations_by_item[parent_item_key].append(annotation)
+                    if parent_item_key:
+                        if parent_item_key not in batch_data.annotations_by_item:
+                            batch_data.annotations_by_item[parent_item_key] = []
+                        batch_data.annotations_by_item[parent_item_key].append(annotation)
 
-        logger.info(
-            f"Built batch data: {len(batch_data.annotations_by_item)} items with annotations, "
-            f"{len(batch_data.attachment_keys)} items with PDF attachments"
-        )
+                logger.info(
+                    f"Built batch data: {len(batch_data.annotations_by_item)} items with annotations, "
+                    f"{len(batch_data.attachment_keys)} items with PDF attachments"
+                )
+                bar.text = f"-> ready ({len(batch_data.annotations_by_item)} items with annotations)"
+                bar()
+        else:
+            # No progress - existing code
+            logger.info("Batch fetching all annotations...")
+            all_annotations = self.zotero.get_all_annotations()
+            logger.info(f"Fetched {len(all_annotations)} annotations in batch")
+
+            logger.info("Batch fetching all attachments...")
+            all_attachments = self.zotero.get_all_attachments()
+            logger.info(f"Fetched {len(all_attachments)} attachments in batch")
+
+            # Build attachment_key -> parent_item_key mapping
+            attachment_to_parent: Dict[str, str] = {}
+            for attachment in all_attachments:
+                attachment_key = attachment.get("key")
+                parent_key = attachment.get("data", {}).get("parentItem")
+                content_type = attachment.get("data", {}).get("contentType", "")
+
+                if attachment_key and parent_key:
+                    attachment_to_parent[attachment_key] = parent_key
+                    # Track PDF attachment keys for items
+                    if "pdf" in content_type.lower():
+                        batch_data.attachment_keys[parent_key] = attachment_key
+
+            # Build item_key -> [annotations] mapping
+            for annotation_data in all_annotations:
+                annotation = Annotation.from_api_response(annotation_data)
+                # annotation.parent_key is the attachment key
+                parent_item_key = attachment_to_parent.get(annotation.parent_key)
+
+                if parent_item_key:
+                    if parent_item_key not in batch_data.annotations_by_item:
+                        batch_data.annotations_by_item[parent_item_key] = []
+                    batch_data.annotations_by_item[parent_item_key].append(annotation)
+
+            logger.info(
+                f"Built batch data: {len(batch_data.annotations_by_item)} items with annotations, "
+                f"{len(batch_data.attachment_keys)} items with PDF attachments"
+            )
 
         return batch_data
 
@@ -186,7 +244,7 @@ class SyncEngine:
             logger.info(f"Fetched {len(items)} items")
 
             # Batch fetch annotations and attachments (major optimization)
-            batch_data = self._build_batch_data()
+            batch_data = self._build_batch_data(show_progress=show_progress)
 
             # Process items with parallel execution
             if show_progress:
@@ -326,7 +384,7 @@ class SyncEngine:
             logger.info(f"Found {len(modified_items)} modified items")
 
             # Batch fetch annotations and attachments (major optimization)
-            batch_data = self._build_batch_data()
+            batch_data = self._build_batch_data(show_progress=show_progress)
 
             # Process modified items with parallel execution
             if show_progress:
@@ -763,7 +821,7 @@ class SyncEngine:
         logger.info(f"Re-rendering {len(active_items)} items due to template change")
 
         # Batch fetch current annotations and attachments
-        batch_data = self._build_batch_data()
+        batch_data = self._build_batch_data(show_progress=show_progress)
 
         # Re-render each item in parallel
         if show_progress:
