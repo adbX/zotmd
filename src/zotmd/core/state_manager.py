@@ -21,7 +21,6 @@ class ItemState:
     file_path: str
     last_synced_at: datetime
     sync_status: str  # 'active' or 'removed'
-    content_hash: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -86,7 +85,6 @@ class StateManager:
                 file_path TEXT NOT NULL,
                 last_synced_at TIMESTAMP NOT NULL,
                 sync_status TEXT NOT NULL,
-                content_hash TEXT,
                 item_json TEXT,
                 created_at TIMESTAMP NOT NULL,
                 updated_at TIMESTAMP NOT NULL
@@ -170,13 +168,17 @@ class StateManager:
             )
             logger.info("Added template_version_at column to sync_metadata")
 
-        # Migration: Add item_json column to sync_items if needed
+        # Migration: Add/remove columns from sync_items as needed
         cursor.execute("PRAGMA table_info(sync_items)")
         items_columns = {row[1] for row in cursor.fetchall()}
 
         if "item_json" not in items_columns:
             cursor.execute("ALTER TABLE sync_items ADD COLUMN item_json TEXT")
             logger.info("Added item_json column to sync_items")
+
+        if "content_hash" in items_columns:
+            cursor.execute("ALTER TABLE sync_items DROP COLUMN content_hash")
+            logger.info("Dropped content_hash column from sync_items")
 
         # Initialize sync_metadata if empty
         cursor.execute("SELECT COUNT(*) FROM sync_metadata")
@@ -267,7 +269,6 @@ class StateManager:
             file_path=row["file_path"],
             last_synced_at=datetime.fromisoformat(row["last_synced_at"]),
             sync_status=row["sync_status"],
-            content_hash=row["content_hash"],
             created_at=(
                 datetime.fromisoformat(row["created_at"]) if row["created_at"] else None
             ),
@@ -303,7 +304,6 @@ class StateManager:
                     file_path = ?,
                     last_synced_at = ?,
                     sync_status = ?,
-                    content_hash = ?,
                     item_json = ?,
                     updated_at = ?
                 WHERE zotero_key = ?
@@ -315,7 +315,6 @@ class StateManager:
                     item_state.file_path,
                     item_state.last_synced_at,
                     item_state.sync_status,
-                    item_state.content_hash,
                     item_json,
                     now,
                     item_state.zotero_key,
@@ -327,9 +326,9 @@ class StateManager:
                 """
                 INSERT INTO sync_items (
                     zotero_key, citation_key, item_type, zotero_version,
-                    file_path, last_synced_at, sync_status, content_hash,
+                    file_path, last_synced_at, sync_status,
                     item_json, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
                 (
                     item_state.zotero_key,
@@ -339,7 +338,6 @@ class StateManager:
                     item_state.file_path,
                     item_state.last_synced_at,
                     item_state.sync_status,
-                    item_state.content_hash,
                     item_json,
                     now,
                     now,
@@ -381,7 +379,6 @@ class StateManager:
                     file_path=row["file_path"],
                     last_synced_at=datetime.fromisoformat(row["last_synced_at"]),
                     sync_status=row["sync_status"],
-                    content_hash=row["content_hash"],
                     created_at=(
                         datetime.fromisoformat(row["created_at"])
                         if row["created_at"]

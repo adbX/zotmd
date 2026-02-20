@@ -81,7 +81,7 @@ def load_config() -> Config:
 
     if not config_path.exists():
         raise FileNotFoundError(
-            f"Configuration not found at {config_path}. Run 'zotmd init' first."
+            f"Configuration not found at {config_path}. Run 'zotmd config' first."
         )
 
     with open(config_path, "rb") as f:

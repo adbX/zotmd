@@ -37,6 +37,9 @@ def _format_authors_list(creators: List[dict], limit: int = 5) -> List[str]:
     return names[:limit]
 
 
+_YEAR_PATTERN = re.compile(r"\b(19|20)\d{2}\b")
+
+
 def _extract_year(date_string: Optional[str]) -> Optional[int]:
     """
     Extract year from a date string.
@@ -50,7 +53,7 @@ def _extract_year(date_string: Optional[str]) -> Optional[int]:
     if not date_string:
         return None
 
-    match = re.search(r"\b(19|20)\d{2}\b", date_string)
+    match = _YEAR_PATTERN.search(date_string)
     return int(match.group(0)) if match else None
 
 
@@ -259,7 +262,7 @@ class TemplateRenderer:
             "attachment_key": attachment_key,
             # Additional convenience variables
             "clean_title": self._clean_title(item.title),
-            "formatted_creators": item.format_creators(),
+            "formatted_creators": self._format_creators(item.creators),
             "authors_list": _format_authors_list(item.creators, limit=5),
             "year": _extract_year(item.date),
             "date_added_simple": _format_date_simple(item.date_added),
@@ -293,8 +296,6 @@ class TemplateRenderer:
             SHA256 hash of template source content
         """
         # Import here to avoid circular dependency
-        import sys
-        import os
 
         # For built-in templates, we need to read the actual file
         # because template.source may not be available in all Jinja2 versions

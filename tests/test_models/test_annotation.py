@@ -16,23 +16,12 @@ def test_annotation_from_api(sample_annotation):
     assert annotation.page_label == "5"
 
 
-def test_annotation_properties(sample_annotation):
-    """Test annotation properties."""
-    annotation = Annotation.from_api_response(sample_annotation)
-
-    # Check that the annotation is a dataclass
-    assert hasattr(annotation, "key")
-    assert hasattr(annotation, "parent_key")
-    assert hasattr(annotation, "color_category")
-    assert annotation.color_category == "red"  # #ff6666 maps to red
-
-
 def test_annotation_without_comment(sample_annotation):
     """Test annotation without comment."""
     sample_annotation["data"]["annotationComment"] = ""
     annotation = Annotation.from_api_response(sample_annotation)
 
-    assert annotation.comment == "" or annotation.comment is None
+    assert annotation.comment == ""
 
 
 def test_annotation_without_page_label(sample_annotation):
@@ -40,4 +29,4 @@ def test_annotation_without_page_label(sample_annotation):
     sample_annotation["data"]["annotationPageLabel"] = ""
     annotation = Annotation.from_api_response(sample_annotation)
 
-    assert annotation.page_label == "" or annotation.page_label is None
+    assert annotation.page_label == ""

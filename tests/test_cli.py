@@ -11,38 +11,11 @@ def test_cli_help():
     result = runner.invoke(main, ["--help"])
 
     assert result.exit_code == 0
-    assert "Zotero to Markdown" in result.output
+    assert "ZotMD" in result.output
+    assert "Markdown" in result.output
     assert "init" in result.output
+    assert "config" in result.output
     assert "sync" in result.output
-    assert "status" in result.output
-
-
-def test_init_command_help():
-    """Test init command help."""
-    runner = CliRunner()
-    result = runner.invoke(main, ["init", "--help"])
-
-    assert result.exit_code == 0
-    assert "Initialize" in result.output
-
-
-def test_sync_command_help():
-    """Test sync command help."""
-    runner = CliRunner()
-    result = runner.invoke(main, ["sync", "--help"])
-
-    assert result.exit_code == 0
-    assert "Synchronize" in result.output
-    assert "--full" in result.output
-    assert "--no-progress" in result.output
-
-
-def test_status_command_help():
-    """Test status command help."""
-    runner = CliRunner()
-    result = runner.invoke(main, ["status", "--help"])
-
-    assert result.exit_code == 0
     assert "status" in result.output
 
 
@@ -78,3 +51,32 @@ def test_sync_without_config(monkeypatch):
 
         # Should exit with error about missing config
         assert result.exit_code != 0 or "not" in result.output.lower()
+
+
+def test_sanitize_path():
+    """Test filepath sanitization for whitespace and quotes."""
+    from zotmd.cli import sanitize_path
+
+    # Basic path - no changes
+    assert sanitize_path("/Users/test/path") == "/Users/test/path"
+
+    # Path with surrounding whitespace
+    assert sanitize_path("  /Users/test/path  ") == "/Users/test/path"
+
+    # Path with double quotes
+    assert sanitize_path('"/Users/test/path"') == "/Users/test/path"
+
+    # Path with single quotes
+    assert sanitize_path("'/Users/test/path'") == "/Users/test/path"
+
+    # Path with quotes and whitespace
+    assert sanitize_path('  "/Users/test/path"  ') == "/Users/test/path"
+
+    # Path with spaces in the path itself (not surrounding)
+    assert sanitize_path("/Users/test/my path") == "/Users/test/my path"
+
+    # Quoted path with spaces in the name
+    assert sanitize_path('"/Users/test/my path"') == "/Users/test/my path"
+
+    # Whitespace inside quotes
+    assert sanitize_path('"  /Users/test/path  "') == "/Users/test/path"

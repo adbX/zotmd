@@ -169,7 +169,9 @@ class SyncEngine:
                     if parent_item_key:
                         if parent_item_key not in batch_data.annotations_by_item:
                             batch_data.annotations_by_item[parent_item_key] = []
-                        batch_data.annotations_by_item[parent_item_key].append(annotation)
+                        batch_data.annotations_by_item[parent_item_key].append(
+                            annotation
+                        )
 
                 logger.info(
                     f"Built batch data: {len(batch_data.annotations_by_item)} items with annotations, "
@@ -561,9 +563,6 @@ class SyncEngine:
         # Write markdown file (each file is different, no locking needed)
         file_path = self.files.write_markdown(item.citation_key, markdown)
 
-        # Compute content hash
-        content_hash = self.files.get_content_hash(item.citation_key)
-
         # Store item JSON for future re-rendering
         import json
 
@@ -578,7 +577,6 @@ class SyncEngine:
             file_path=str(file_path),
             last_synced_at=datetime.now(),
             sync_status="active",
-            content_hash=content_hash,
         )
         with self._db_lock:
             self.state.upsert_item(item_state, item_json=item_json)
@@ -590,132 +588,6 @@ class SyncEngine:
         else:
             result.increment_created()
             logger.debug(f"Created item: {item.citation_key}")
-
-    def _sync_single_item(self, item_data: dict, result: SyncResult) -> None:
-        """
-        Sync a single Zotero item (legacy method).
-
-        This is the original implementation that makes per-item API calls.
-        Kept for backwards compatibility but not used by default.
-
-        Args:
-            item_data: Zotero API item data
-            result: SyncResult to update
-        """
-        result.total_items_processed += 1
-
-        # Parse item
-        item = ZoteroItem.from_api_response(item_data, self.library_id)
-
-        if not item:
-            # No citation key - skip
-            logger.debug(f"Skipping item {item_data.get('key')} - no citation key")
-            result.items_skipped += 1
-            return
-
-        # Check if item exists in database
-        existing_state = self.state.get_item_state(item.key)
-
-        # Always fetch annotations to check for changes
-        annotations = self._fetch_annotations(item.key)
-        result.annotations_synced += len(annotations)
-
-        # Read existing file once if item exists
-        existing_content = None
-        is_update = False
-
-        if existing_state:
-            # Item exists - check if version or annotations changed
-            item_version_changed = existing_state.zotero_version < item.version
-
-            # Read existing file to check annotation count
-            existing_content = self.files.read_existing(item.citation_key)
-            if existing_content:
-                existing_annotations = self.renderer.extract_annotations_section(
-                    existing_content
-                )
-                # Simple heuristic: count annotation markers in existing content
-                existing_annot_count = (
-                    existing_annotations.count("- <mark class=")
-                    if existing_annotations
-                    else 0
-                )
-                new_annot_count = len(annotations)
-                annotations_changed = existing_annot_count != new_annot_count
-            else:
-                annotations_changed = len(annotations) > 0
-
-            # Skip if neither metadata nor annotations changed
-            if not item_version_changed and not annotations_changed:
-                logger.debug(f"Item {item.key} and annotations unchanged, skipping")
-                return
-
-            is_update = True
-
-        # Get PDF attachment key for annotation links
-        attachment = self.zotero.get_attachment_for_item(item.key)
-        attachment_key = attachment.get("key") if attachment else None
-
-        # Render markdown
-        preserved_notes = None
-        if is_update and existing_content:
-            preserved_notes = self.renderer.extract_notes_section(existing_content)
-
-        markdown = self.renderer.render_item(
-            item=item,
-            annotations=annotations,
-            library_id=self.library_id,
-            preserved_notes=preserved_notes,
-            attachment_key=attachment_key,
-        )
-
-        # Write markdown file
-        file_path = self.files.write_markdown(item.citation_key, markdown)
-
-        # Compute content hash
-        content_hash = self.files.get_content_hash(item.citation_key)
-
-        # Update database
-        item_state = ItemState(
-            zotero_key=item.key,
-            citation_key=item.citation_key,
-            item_type=item.item_type,
-            zotero_version=item.version,
-            file_path=str(file_path),
-            last_synced_at=datetime.now(),
-            sync_status="active",
-            content_hash=content_hash,
-        )
-        self.state.upsert_item(item_state)
-
-        # Update sync statistics
-        if is_update:
-            result.items_updated += 1
-            logger.debug(f"Updated item: {item.citation_key}")
-        else:
-            result.items_created += 1
-            logger.debug(f"Created item: {item.citation_key}")
-
-    def _fetch_annotations(self, item_key: str) -> List[Annotation]:
-        """
-        Fetch and parse annotations for an item.
-
-        Args:
-            item_key: Zotero item key
-
-        Returns:
-            List of Annotation objects
-        """
-        try:
-            annotation_data = self.zotero.get_annotations_for_item(item_key)
-            annotations = [
-                Annotation.from_api_response(annot) for annot in annotation_data
-            ]
-            return annotations
-
-        except Exception as e:
-            logger.error(f"Failed to fetch annotations for {item_key}: {e}")
-            return []
 
     def _handle_removed_items(self) -> int:
         """
@@ -943,13 +815,10 @@ class SyncEngine:
         # Write file
         self.files.write_markdown(item_state.citation_key, markdown)
 
-        # Update content hash
-        content_hash = self.files.get_content_hash(item_state.citation_key)
-
         # Store item JSON for future re-rendering
         item_json = json.dumps(item_data)
 
-        # Update database with new hash and timestamp
+        # Update database with new timestamp
         updated_state = ItemState(
             zotero_key=item_state.zotero_key,
             citation_key=item_state.citation_key,
@@ -958,7 +827,6 @@ class SyncEngine:
             file_path=item_state.file_path,
             last_synced_at=datetime.now(),
             sync_status=item_state.sync_status,
-            content_hash=content_hash,
         )
 
         with self._db_lock:
