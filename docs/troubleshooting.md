@@ -2,6 +2,55 @@
 
 Common issues and solutions for ZotMD.
 
+## Configuration Issues
+
+### Config not found
+
+```bash
+$ zotmd sync
+Error: Not configured. Run 'zotmd config' first.
+```
+
+**Solution:** Run `zotmd config` to create the config file.
+
+### Invalid API key
+
+```bash
+$ zotmd config
+Testing connection to Zotero...
+Error: Failed to connect to Zotero API.
+```
+
+**Solutions:**
+
+- Regenerate API key at [zotero.org/settings/keys/new](https://www.zotero.org/settings/keys/new)
+- Ensure "Allow library access" is checked
+- Check for typos (keys are case-sensitive)
+
+### Invalid library ID
+
+```bash
+✗ Error: Library not found (403 Forbidden)
+```
+
+**Solutions:**
+
+- Verify library ID at [zotero.org/settings/keys](https://www.zotero.org/settings/keys)
+- Ensure `library_type` matches (`user` vs `group`)
+- For groups, ensure you're a member
+
+### Permission denied (output directory)
+
+```bash
+Error: Permission denied: /restricted/path
+```
+
+**Solutions:**
+
+- Choose a directory you have write access to
+- Create directory first: `mkdir -p ~/notes/references`
+- Check permissions: `ls -ld ~/notes/references`
+
 ## Installation Issues
 
 ### Command not found: zotmd
@@ -74,7 +123,7 @@ $ zotmd status
 
 2. **Verify credentials:**
    ```bash
-   zotmd init  # Re-enter credentials
+   zotmd config  # Re-enter credentials
    ```
 
 3. **Test API manually:**
@@ -266,7 +315,7 @@ Error: Permission denied: /path/to/output
 
 3. **Choose different path:**
    ```bash
-   zotmd init  # Enter accessible directory
+   zotmd config  # Enter accessible directory
    ```
 
 ### Filename too long
@@ -420,7 +469,7 @@ If you encounter an issue not listed here:
 zotmd status
 
 # Test connection only
-zotmd init  # Will test during setup
+zotmd config  # Will test during setup
 
 # View config file
 cat ~/.config/zotmd/config.toml  # macOS/Linux

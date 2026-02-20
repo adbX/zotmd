@@ -57,7 +57,7 @@ def prompt_with_default(
             display_default = mask_api_key(default)
         else:
             display_default = default
-        full_prompt = f"{prompt} [{display_default}]: "
+        full_prompt = f"{prompt} [default: {display_default}]: "
     else:
         full_prompt = f"{prompt}: "
 
@@ -70,6 +70,25 @@ def prompt_with_default(
     if not value and default:
         return default
     return value
+
+
+def sanitize_path(path_str: str) -> str:
+    """Sanitize a file path string by removing surrounding whitespace and quotes.
+
+    Handles paths that may have been copied with surrounding quotes or have
+    leading/trailing whitespace.
+    """
+    # Strip whitespace first
+    path_str = path_str.strip()
+
+    # Remove surrounding quotes (single or double)
+    if (path_str.startswith('"') and path_str.endswith('"')) or (
+        path_str.startswith("'") and path_str.endswith("'")
+    ):
+        path_str = path_str[1:-1]
+
+    # Strip again in case there was whitespace inside the quotes
+    return path_str.strip()
 
 
 def test_connection(
@@ -119,7 +138,13 @@ def create_sync_engine(config: Config) -> SyncEngine:
 @click.option("-v", "--verbose", is_flag=True, help="Enable verbose logging")
 @click.pass_context
 def main(ctx: click.Context, verbose: bool) -> None:
-    """Zotero to Markdown synchronization tool."""
+    """ZotMD - Synchronize Zotero library to Markdown files.
+
+    Export your Zotero items and PDF annotations to Markdown for use
+    with Obsidian, Logseq, or other note-taking apps.
+
+    Get started with: zotmd config
+    """
     ctx.ensure_object(dict)
     ctx.obj["verbose"] = verbose
     setup_logging(verbose)
@@ -128,11 +153,12 @@ def main(ctx: click.Context, verbose: bool) -> None:
 @main.command()
 @click.pass_context
 def init(ctx: click.Context) -> None:
-    """Initialize or update configuration.
+    """Initialize or update configuration interactively.
 
-    Prompts for all settings. Press Enter to keep existing values.
+    Prompts for Zotero API credentials, output directory, and sync settings.
+    Press Enter to keep existing values when updating configuration.
     """
-    click.echo("\nZotero MD Sync - Configuration")
+    click.echo("\nZotMD - Configuration")
     click.echo("=" * 35)
 
     # Load existing config if available
@@ -144,13 +170,17 @@ def init(ctx: click.Context) -> None:
         except Exception:
             click.echo("(Existing config is invalid, starting fresh)\n")
 
+    # Show link to Zotero API key page
+    click.echo("Get your Library ID and API Key at:")
+    click.echo("  https://www.zotero.org/settings/keys\n")
+
     # Prompt for each setting
     library_id = prompt_with_default(
         "Library ID",
         existing.library_id if existing else None,
     )
     if not library_id:
-        click.echo("Error: Library ID is required", err=True)
+        click.echo("Error: Library ID is required.", err=True)
         sys.exit(1)
 
     api_key = prompt_with_default(
@@ -159,7 +189,7 @@ def init(ctx: click.Context) -> None:
         password=True,
     )
     if not api_key:
-        click.echo("Error: API Key is required", err=True)
+        click.echo("Error: API Key is required.", err=True)
         sys.exit(1)
 
     library_type = prompt_with_default(
@@ -167,7 +197,7 @@ def init(ctx: click.Context) -> None:
         existing.library_type if existing else "user",
     )
     if library_type not in ("user", "group"):
-        click.echo("Error: Library type must be 'user' or 'group'", err=True)
+        click.echo("Error: Library type must be 'user' or 'group'.", err=True)
         sys.exit(1)
 
     output_dir_str = prompt_with_default(
@@ -175,16 +205,16 @@ def init(ctx: click.Context) -> None:
         str(existing.output_dir) if existing else None,
     )
     if not output_dir_str:
-        click.echo("Error: Output directory is required", err=True)
+        click.echo("Error: Output directory is required.", err=True)
         sys.exit(1)
-    output_dir = Path(output_dir_str).expanduser()
+    output_dir = Path(sanitize_path(output_dir_str)).expanduser()
 
     deletion_behavior = prompt_with_default(
         "Deletion Behavior (move/delete)",
         existing.deletion_behavior if existing else "move",
     )
     if deletion_behavior not in ("move", "delete"):
-        click.echo("Error: Deletion behavior must be 'move' or 'delete'", err=True)
+        click.echo("Error: Deletion behavior must be 'move' or 'delete'.", err=True)
         sys.exit(1)
 
     # Database path (optional)
@@ -194,6 +224,7 @@ def init(ctx: click.Context) -> None:
         "Database Path (Enter for default)",
         current_db,
     )
+    db_path_str = sanitize_path(db_path_str)
     db_path = Path(db_path_str).expanduser() if db_path_str != default_db else None
 
     # Template path (optional)
@@ -204,16 +235,19 @@ def init(ctx: click.Context) -> None:
         "Custom Template Path (Enter for built-in)",
         current_template if current_template else None,
     )
+    template_path_str = sanitize_path(template_path_str) if template_path_str else ""
     template_path = Path(template_path_str).expanduser() if template_path_str else None
 
     # Test connection
-    click.echo("\nTesting connection...")
+    click.echo("\nTesting connection to Zotero...")
     success, version = test_connection(library_id, api_key, library_type)
 
     if success:
-        click.echo(f"Connected to Zotero library (version {version})")
+        click.echo(f"Connected successfully (library version {version})")
     else:
-        click.echo("Failed to connect to Zotero API", err=True)
+        click.echo("Error: Failed to connect to Zotero API.", err=True)
+        click.echo("Check your Library ID and API Key at:")
+        click.echo("  https://www.zotero.org/settings/keys")
         if not click.confirm("Save configuration anyway?"):
             sys.exit(1)
 
@@ -236,24 +270,36 @@ def init(ctx: click.Context) -> None:
     click.echo(f"\nConfiguration saved to {get_config_path()}")
 
 
+# Add 'config' as an alias for 'init'
+@main.command("config")
+@click.pass_context
+def config_cmd(ctx: click.Context) -> None:
+    """Configure ZotMD settings (alias for 'init').
+
+    Prompts for Zotero API credentials, output directory, and sync settings.
+    Press Enter to keep existing values when updating configuration.
+    """
+    ctx.invoke(init)
+
+
 @main.command()
 @click.option("--full", is_flag=True, help="Force full sync (re-import all items)")
 @click.option("--no-progress", is_flag=True, help="Disable progress bar")
 @click.pass_context
 def sync(ctx: click.Context, full: bool, no_progress: bool) -> None:
-    """Synchronize Zotero library to markdown files.
+    """Synchronize Zotero library to Markdown files.
 
-    By default, performs an incremental sync (only changed items).
-    Use --full to re-import all items.
+    By default, performs an incremental sync (only changed items since last sync).
+    Use --full to re-import all items from scratch.
     """
     if not config_exists():
-        click.echo("Error: Not configured. Run 'zotmd init' first.", err=True)
+        click.echo("Error: Not configured. Run 'zotmd config' first.", err=True)
         sys.exit(1)
 
     try:
         config = load_config()
     except Exception as e:
-        click.echo(f"Error loading config: {e}", err=True)
+        click.echo(f"Error: Failed to load configuration: {e}", err=True)
         sys.exit(1)
 
     click.echo(f"Syncing to {config.output_dir}")
@@ -270,17 +316,17 @@ def sync(ctx: click.Context, full: bool, no_progress: bool) -> None:
 
         # Display results
         click.echo("\n" + "=" * 50)
-        click.echo("Sync Complete!")
+        click.echo("Sync Complete")
         click.echo("=" * 50)
-        click.echo(f"Items processed: {result.total_items_processed}")
-        click.echo(f"Items created:   {result.items_created}")
-        click.echo(f"Items updated:   {result.items_updated}")
-        click.echo(f"Items removed:   {result.items_removed}")
-        click.echo(f"Items skipped:   {result.items_skipped}")
-        click.echo(f"Annotations:     {result.annotations_synced}")
+        click.echo(f"  Items processed: {result.total_items_processed}")
+        click.echo(f"  Items created:   {result.items_created}")
+        click.echo(f"  Items updated:   {result.items_updated}")
+        click.echo(f"  Items removed:   {result.items_removed}")
+        click.echo(f"  Items skipped:   {result.items_skipped}")
+        click.echo(f"  Annotations:     {result.annotations_synced}")
 
         if result.errors:
-            click.echo(f"\nErrors: {len(result.errors)}", err=True)
+            click.echo(f"\nErrors ({len(result.errors)}):", err=True)
             for error in result.errors[:5]:
                 click.echo(f"  - {error}", err=True)
             if len(result.errors) > 5:
@@ -289,7 +335,7 @@ def sync(ctx: click.Context, full: bool, no_progress: bool) -> None:
         click.echo("=" * 50)
 
     except Exception as e:
-        click.echo(f"Sync failed: {e}", err=True)
+        click.echo(f"Error: Sync failed: {e}", err=True)
         if ctx.obj.get("verbose"):
             import traceback
 
@@ -300,9 +346,12 @@ def sync(ctx: click.Context, full: bool, no_progress: bool) -> None:
 @main.command()
 @click.pass_context
 def status(ctx: click.Context) -> None:
-    """Show configuration and sync status."""
+    """Show current configuration and sync status.
+
+    Displays connection status, sync statistics, and configuration details.
+    """
     click.echo("\n" + "=" * 50)
-    click.echo("Zotero MD Sync Status")
+    click.echo("ZotMD Status")
     click.echo("=" * 50)
 
     # Configuration
@@ -318,11 +367,11 @@ def status(ctx: click.Context) -> None:
             click.echo(f"  Deletion: {config.deletion_behavior}")
             click.echo(f"  Database: {config.get_db_path()}")
         except Exception as e:
-            click.echo(f"  Error reading config: {e}", err=True)
+            click.echo(f"  Error: Failed to read config: {e}", err=True)
             click.echo("=" * 50 + "\n")
             return
     else:
-        click.echo("  Not configured. Run 'zotmd init' first.")
+        click.echo("  Not configured. Run 'zotmd config' first.")
         click.echo("=" * 50 + "\n")
         return
 
@@ -335,7 +384,8 @@ def status(ctx: click.Context) -> None:
         click.echo("  Status: Connected")
         click.echo(f"  Library version: {version}")
     else:
-        click.echo("  Status: Failed to connect")
+        click.echo("  Status: Connection failed")
+        click.echo("  Check credentials at: https://www.zotero.org/settings/keys")
 
     # Sync statistics
     db_path = config.get_db_path()
@@ -355,7 +405,7 @@ def status(ctx: click.Context) -> None:
                 f"  Library version: {stats['last_library_version'] or 'Unknown'}"
             )
         except Exception as e:
-            click.echo(f"  Error reading database: {e}", err=True)
+            click.echo(f"  Error: Failed to read database: {e}", err=True)
     else:
         click.echo("\nSync Statistics:")
         click.echo("  No sync data yet. Run 'zotmd sync --full' first.")

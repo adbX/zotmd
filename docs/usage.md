@@ -2,20 +2,22 @@
 
 ## Commands Overview
 
-ZotMD provides three main commands:
+ZotMD provides the following commands:
 
 | Command | Purpose |
 |---------|---------|
-| `zotmd init` | Initialize or update configuration |
+| `zotmd config` | Configure ZotMD settings (interactive setup) |
 | `zotmd sync` | Synchronize your library |
 | `zotmd status` | Show configuration and sync status |
 
-## zotmd init
+Note: `zotmd init` is available as an alias for `zotmd config`.
+
+## zotmd config
 
 Interactive configuration setup. Updates existing config if already initialized.
 
 ```bash
-zotmd init
+zotmd config
 ```
 
 **Options:**
@@ -29,16 +31,19 @@ zotmd init
 
 **Example:**
 ```bash
-$ zotmd init
-Library ID [1234567]:
-API Key [abc...xyz]:
-Library Type [user]:
-Output Directory [/old/path]: /Users/me/vault/references
-Deletion Behavior [move]: delete
-Database Path [~/.local/share/zotmd/sync.sqlite]:
+$ zotmd config
+Get your Library ID and API Key at:
+  https://www.zotero.org/settings/keys
 
-Testing connection...
-✓ Connected to Zotero library (version 4652)
+Library ID [default: 1234567]:
+API Key [default: abc...xyz]:
+Library Type (user/group) [default: user]:
+Output Directory [default: /old/path]: /Users/me/vault/references
+Deletion Behavior (move/delete) [default: move]: delete
+Database Path (Enter for default) [default: ~/.local/share/zotmd/sync.sqlite]:
+
+Testing connection to Zotero...
+Connected successfully (library version 4652)
 Configuration saved!
 ```
 

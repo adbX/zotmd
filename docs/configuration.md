@@ -90,56 +90,6 @@ Both fields are optional. Leave empty (`""`) to use defaults.
 - **Description**: Path to custom Jinja2 template file
 - **See**: [Template Customization](#template-customization) below
 
-## Example Configurations
-
-### Minimal (recommended for most users)
-```toml
-[zotero]
-library_id = "1234567"
-api_key = "abc123xyz789..."
-library_type = "user"
-
-[sync]
-output_dir = "/Users/me/vault/references"
-deletion_behavior = "move"
-
-[advanced]
-db_path = ""
-template_path = ""
-```
-
-### Group Library
-```toml
-[zotero]
-library_id = "9876543"
-api_key = "def456uvw..."
-library_type = "group"  # Changed to group
-
-[sync]
-output_dir = "/Users/me/shared-refs"
-deletion_behavior = "move"
-
-[advanced]
-db_path = ""
-template_path = ""
-```
-
-### Custom Locations
-```toml
-[zotero]
-library_id = "1234567"
-api_key = "abc123xyz..."
-library_type = "user"
-
-[sync]
-output_dir = "/custom/output/path"
-deletion_behavior = "delete"  # Permanent deletion
-
-[advanced]
-db_path = "/custom/db/location/sync.sqlite"
-template_path = "/custom/templates/my-template.md.j2"
-```
-
 ## Template Customization
 
 ZotMD uses Jinja2 templates to generate Markdown files.
@@ -224,12 +174,12 @@ citationKey: {{ item.citation_key }}
 
 ## Editing Configuration
 
-### Option 1: Use zotmd init (recommended)
+### Option 1: Use zotmd config (recommended)
 ```bash
-zotmd init
+zotmd config
 ```
 
-Interactive prompts with current values shown.
+Interactive prompts with current values shown. (`zotmd init` is also available as an alias.)
 
 ### Option 2: Edit file directly
 ```bash
@@ -248,44 +198,6 @@ After editing, verify with:
 zotmd status
 ```
 
-## Troubleshooting Config Issues
+## Troubleshooting
 
-### Config not found
-```bash
-$ zotmd sync
-Error: Configuration not found. Run 'zotmd init' first.
-```
-
-**Solution:** Run `zotmd init` to create config file.
-
-### Invalid API key
-```bash
-$ zotmd init
-Testing connection...
-✗ Error: Invalid API key
-```
-
-**Solutions:**
-- Regenerate API key at [zotero.org/settings/keys/new](https://www.zotero.org/settings/keys/new)
-- Ensure "Allow library access" is checked
-- Check for typos (keys are case-sensitive)
-
-### Invalid library ID
-```bash
-✗ Error: Library not found (403 Forbidden)
-```
-
-**Solutions:**
-- Verify library ID at [zotero.org/settings/keys](https://www.zotero.org/settings/keys)
-- Ensure library_type matches (user vs group)
-- For groups, ensure you're a member
-
-### Permission denied (output directory)
-```bash
-Error: Permission denied: /restricted/path
-```
-
-**Solutions:**
-- Choose a directory you have write access to
-- Create directory first: `mkdir -p ~/notes/references`
-- Check permissions: `ls -ld ~/notes/references`
+See [Troubleshooting](troubleshooting.md) for common issues.

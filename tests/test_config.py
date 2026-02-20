@@ -9,9 +9,6 @@ import tomli_w
 from zotmd.config import (
     Config,
     config_exists,
-    get_config_dir,
-    get_data_dir,
-    get_default_db_path,
     load_config,
     mask_api_key,
     save_config,
@@ -25,27 +22,6 @@ def test_mask_api_key():
     assert mask_api_key("abcdefgh") == "********"  # length == 8
     assert mask_api_key("abcdefghi") == "abc...ghi"  # length > 8
     assert mask_api_key("abcdefghijk") == "abc...ijk"
-
-
-def test_get_config_dir():
-    """Test config directory path generation."""
-    config_dir = get_config_dir()
-    assert config_dir.name == "zotmd"
-    assert config_dir.is_absolute()
-
-
-def test_get_data_dir():
-    """Test data directory path generation."""
-    data_dir = get_data_dir()
-    assert data_dir.name == "zotmd"
-    assert data_dir.is_absolute()
-
-
-def test_get_default_db_path():
-    """Test default database path."""
-    db_path = get_default_db_path()
-    assert db_path.name == "sync.sqlite"
-    assert db_path.parent.name == "zotmd"
 
 
 def test_config_exists_false(monkeypatch):

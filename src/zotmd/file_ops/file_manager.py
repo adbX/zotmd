@@ -1,6 +1,5 @@
 """File manager for markdown file operations."""
 
-import hashlib
 import logging
 from pathlib import Path
 from typing import Optional
@@ -91,19 +90,13 @@ class FileManager:
             logger.error(f"Failed to read file {file_path}: {e}")
             return None
 
-    def write_markdown(
-        self,
-        citation_key: str,
-        content: str,
-        check_conflict: bool = True,
-    ) -> Path:
+    def write_markdown(self, citation_key: str, content: str) -> Path:
         """
         Write markdown file (create or update).
 
         Args:
             citation_key: Citation key
             content: Markdown content to write
-            check_conflict: If True, check for concurrent modifications
 
         Returns:
             Path to written file
@@ -112,14 +105,6 @@ class FileManager:
             IOError: If write fails
         """
         file_path = self.get_file_path(citation_key)
-
-        # Check for conflicts if requested
-        if check_conflict and file_path.exists():
-            existing_content = self.read_existing(citation_key)
-            if existing_content:
-                # Note: In future, could compare hash to detect conflicts
-                # For now, we just overwrite
-                pass
 
         try:
             # Write to file
@@ -216,34 +201,6 @@ class FileManager:
         except Exception as e:
             logger.error(f"Failed to delete file {file_path}: {e}")
             return False
-
-    def get_content_hash(self, citation_key: str) -> Optional[str]:
-        """
-        Compute hash of file content for change detection.
-
-        Args:
-            citation_key: Citation key
-
-        Returns:
-            MD5 hash of file content or None if file doesn't exist
-        """
-        content = self.read_existing(citation_key)
-        if content:
-            return self._compute_hash(content)
-        return None
-
-    @staticmethod
-    def _compute_hash(content: str) -> str:
-        """
-        Compute MD5 hash of string content.
-
-        Args:
-            content: String content
-
-        Returns:
-            MD5 hash as hex string
-        """
-        return hashlib.md5(content.encode("utf-8")).hexdigest()
 
     def list_all_files(self) -> list[Path]:
         """

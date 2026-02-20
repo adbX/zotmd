@@ -17,7 +17,7 @@ Built for Obsidian and compatible with any Markdown-based note-taking app.
 uv tool install zotmd
 
 # Set up configuration
-zotmd init
+zotmd config
 
 # Sync your library
 zotmd sync

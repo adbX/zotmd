@@ -47,31 +47,33 @@
     - Click *Save Key*
     - **Copy the generated key** (you won't see it again!)
 
-## 3. Initialize configuration
+## 3. Configure ZotMD
 
 ??? warning "Keep Zotero running while syncing"
 
 Run the interactive setup:
 
 ```bash
-zotmd init
+zotmd config
 ```
 
 You'll be prompted for:
 
 ```
-Zotero MD Sync - Configuration
-==============================
+ZotMD - Configuration
+===================================
+Get your Library ID and API Key at:
+  https://www.zotero.org/settings/keys
 
-Library ID []: 1234567
-API Key []: abc123xyz789...
-Library Type (user/group) [user]:
-Output Directory []: /YourObsidianVault/research/references
-Deletion Behavior (move/delete) [move]:
-Database Path (Enter for default) [~/.local/share/zotmd/sync.sqlite]:
+Library ID: 1234567
+API Key: abc123xyz789...
+Library Type (user/group) [default: user]:
+Output Directory: /YourObsidianVault/research/references
+Deletion Behavior (move/delete) [default: move]:
+Database Path (Enter for default) [default: ~/.local/share/zotmd/sync.sqlite]:
 
-Testing connection...
-✓ Connected to Zotero library (version 4652)
+Testing connection to Zotero...
+Connected successfully (library version 4652)
 
 Configuration saved to ~/.config/zotmd/config.toml
 ```

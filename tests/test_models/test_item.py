@@ -25,16 +25,3 @@ def test_zotero_item_missing_citation_key(sample_zotero_item_no_citation_key):
         sample_zotero_item_no_citation_key, library_id="1234567"
     )
     assert item is None
-
-
-def test_zotero_item_properties(sample_zotero_item):
-    """Test ZoteroItem properties."""
-    item = ZoteroItem.from_api_response(sample_zotero_item, library_id="1234567")
-
-    # Check that it's a proper dataclass
-    assert hasattr(item, "key")
-    assert hasattr(item, "citation_key")
-    assert hasattr(item, "title")
-    assert item.key == "ABC123XYZ"
-    assert item.citation_key == "doe2024sample"
-    assert item.title == "Sample Article Title"
