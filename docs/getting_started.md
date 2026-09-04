@@ -1,55 +1,23 @@
 # Getting Started
 
-??? note "Prerequisites"
+## 1. Prepare Zotero
 
-    ??? info "Ensure the Better BibTeX Zotero plugin is installed"
+Install [Better BibTeX](https://retorque.re/zotero-better-bibtex/) and ensure each item to be exported has a citation key. ZotMD skips items without one and reports their Zotero keys.
 
-        1. Download from [retorque.re/zotero-better-bibtex](https://retorque.re/zotero-better-bibtex/)
-        2. In Zotero: **Tools -> Add-ons -> Install Add-on From File**
-        3. Select the downloaded `.xpi` file
-        4. Restart Zotero and verify by right-clicking any item -> **Better BibTeX -> Refresh BibTeX key**
+At [Zotero settings](https://www.zotero.org/settings/keys), find the numeric user ID for your personal library. Create a dedicated private key with personal-library read access, no write access, and no group access.
 
-    ??? info "Ensure Zotero API access is enabled"
+ZotMD uses the Zotero Web API. Zotero Desktop does not need to be running, and the local API setting does not affect synchronization.
 
-        - Open Zotero Settings -> **Advanced** -> **Miscellaneous**
-        - Check **"Allow other applications to access Zotero"**
-        - Click **OK**
+## 2. Install ZotMD
 
-## 1. Install ZotMD using uv (recommended) or pipx
+Install Python 3.13 or newer and ZotMD with [uv](https://docs.astral.sh/uv/):
 
-=== "uv"
-
-    ```bash
-    # Install with uv https://docs.astral.sh/uv/
-    uv tool install zotmd
-    ```
-
-=== "pipx"
-
-    ```bash
-    # Install with pipx https://pipx.pypa.io/
-    pipx install zotmd
-    ```
-
-## 2. Get your API keys: [zotero.org/settings/keys](https://www.zotero.org/settings/keys)
-
-??? info "Library ID"
-
-    - Go to [zotero.org/settings/keys](https://www.zotero.org/settings/keys)
-    - Find *"Your userID for use in API calls"*
-    - **Copy the number** (e.g., `1234567`) for the next step
-
-??? info "API Key"
-
-    - Click on [Create a new private key](https://www.zotero.org/settings/keys/new) under *Applications*
-    - Enter a description (e.g., "ZotMD Sync")
-    - Under *Personal Library*, the defaults are OK (*Personal Library -> Allow library access, Default Group Permissions -> None*)
-    - Click *Save Key*
-    - **Copy the generated key** (you won't see it again!)
+```bash
+uv python install 3.13
+uv tool install zotmd
+```
 
 ## 3. Configure ZotMD
-
-??? warning "Keep Zotero running while syncing"
 
 Run the interactive setup:
 
@@ -57,57 +25,37 @@ Run the interactive setup:
 zotmd config
 ```
 
-You'll be prompted for:
+Enter the personal-library user ID, API key, Obsidian references directory, deletion behavior, and optional state or custom-template paths. API-key input is hidden.
 
-```
-ZotMD - Configuration
-===================================
-Get your Library ID and API Key at:
-  https://www.zotero.org/settings/keys
+To avoid storing the API key, export it before setup and every later ZotMD command:
 
-Library ID: 1234567
-API Key: abc123xyz789...
-Library Type (user/group) [default: user]:
-Output Directory: /YourObsidianVault/research/references
-Deletion Behavior (move/delete) [default: move]:
-Database Path (Enter for default) [default: ~/.local/share/zotmd/sync.sqlite]:
-
-Testing connection to Zotero...
-Connected successfully (library version 4652)
-
-Configuration saved to ~/.config/zotmd/config.toml
+```bash
+export ZOTMD_API_KEY="your-read-only-key"
+zotmd config
 ```
 
-??? question "Configuration Options"
+Setup uses the environment key for its connection test without writing it to `config.toml`.
 
-    - **Library ID**: Your numeric user ID from Zotero
-    - **API Key**: The key you generated above
-    - **Library Type**: `user` (personal library) or `group` (shared library)
-    - **Output Directory**: Where to save Markdown files
-    - **Deletion Behavior**: How generated Markdown files whose corresponding Zotero articles are deleted are handled
-        - `move`: Deleted items moved to `removed/` subdirectory
-        - `delete`: Deleted items permanently removed
-    - **Database Path**: Leave blank for default location
+## 4. Preview and Sync
 
-## 4. Run your first sync
+Preview a fresh full synchronization:
+
+```bash
+zotmd sync --full --dry-run
+```
+
+Review the planned creates, rewrites, renames, removals, permanent deletions, output moves, missing citation keys, collisions, and errors. A dry run does not create an output directory or database when either is absent.
+
+When the preview is clean, back up any existing output and run:
 
 ```bash
 zotmd sync --full
 ```
 
-This performs a full sync of your entire library. You'll see:
+Use `zotmd sync` for later incremental updates.
 
-```
-Syncing Zotero library...
-Processing: 243 items |████████████████████| 100%
-✓ Synced 243 items (15 new, 228 updated)
-✓ Extracted 89 annotations
-✓ Completed in 45s
-```
+## Upgrading From 0.3
 
-Your Markdown files are now in your configured output directory!
+ZotMD 0.4 intentionally does not migrate 0.3 state, old Notes markers, or the old `zotero.library_type` configuration key. Keep the existing output as a backup, archive the old `sync.sqlite`, then run `zotmd config` to rewrite the configuration for a personal library and choose a new empty output directory. Run a fresh 0.4 full sync and keep the backups until the new corpus and a second no-op incremental sync have been checked.
 
-## Next Steps
-
-- [Troubleshooting](troubleshooting.md)
-- [Usage & Commands](usage.md)
+Continue with [Configuration](configuration.md) and [Usage](usage.md).

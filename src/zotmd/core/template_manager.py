@@ -1,12 +1,10 @@
 """Template change detection and versioning."""
 
 import hashlib
-from pathlib import Path
-from typing import Optional
 import logging
+from pathlib import Path
 
-from .state_manager import TemplateVersion
-
+from .state_manager import DEFAULT_RENDER_CONTRACT_VERSION, TemplateVersion
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +26,7 @@ class TemplateChangeDetector:
         return hashlib.sha256(template_content.encode("utf-8")).hexdigest()
 
     @staticmethod
-    def get_template_identifier(template_path: Optional[Path]) -> str:
+    def get_template_identifier(template_path: Path | None) -> str:
         """
         Get identifier for template (path or 'built-in').
 
@@ -46,7 +44,8 @@ class TemplateChangeDetector:
     def has_template_changed(
         current_hash: str,
         current_path: str,
-        stored_version: Optional[TemplateVersion],
+        stored_version: TemplateVersion | None,
+        current_render_contract_version: int = DEFAULT_RENDER_CONTRACT_VERSION,
     ) -> bool:
         """
         Check if template has changed since last recorded version.
@@ -55,6 +54,7 @@ class TemplateChangeDetector:
             current_hash: Current template hash
             current_path: Current template path identifier
             stored_version: Previously stored template version
+            current_render_contract_version: Current renderer behavior version
 
         Returns:
             True if template changed or no stored version exists
@@ -74,6 +74,14 @@ class TemplateChangeDetector:
             logger.warning(
                 f"Template path changed: {stored_version.template_path} "
                 f"→ {current_path}"
+            )
+            return True
+
+        if stored_version.render_contract_version != current_render_contract_version:
+            logger.warning(
+                "Render contract changed: "
+                f"{stored_version.render_contract_version} -> "
+                f"{current_render_contract_version}"
             )
             return True
 

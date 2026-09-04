@@ -1,25 +1,25 @@
 # Configuration
 
-ZotMD uses a TOML configuration file stored in your system's config directory.
+ZotMD uses one closed-schema TOML file. Unknown sections and keys are rejected so misspellings cannot silently change behavior.
 
-## Config File Location
+## Locations
 
-| OS | Path |
-|----|------|
-| macOS | `~/Library/Application Support/zotmd/config.toml` |
-| Linux | `~/.config/zotmd/config.toml` |
-| Windows | `%APPDATA%\zotmd\config.toml` |
+| Data | macOS default | Linux default |
+|---|---|---|
+| Configuration | `~/Library/Application Support/zotmd/config.toml` | `~/.config/zotmd/config.toml` |
+| State | `~/Library/Application Support/zotmd/sync.sqlite` | `~/.local/share/zotmd/sync.sqlite` |
 
-## Configuration Schema
+Platform defaults come from `platformdirs`. Run `zotmd status` to see the effective paths.
+
+## Schema
 
 ```toml
 [zotero]
 library_id = "1234567"
-api_key = "abc123xyz789..."
-library_type = "user"
+api_key = "read-only-key"
 
 [sync]
-output_dir = "/Users/yourname/notes/references"
+output_dir = "~/Documents/references"
 deletion_behavior = "move"
 
 [advanced]
@@ -27,177 +27,88 @@ db_path = ""
 template_path = ""
 ```
 
-## Zotero Section
+`zotero.library_id` identifies a personal library. Group IDs and a `library_type` key are not supported. `zotero.api_key` may be omitted when `ZOTMD_API_KEY` is set; the environment value always takes precedence.
 
-### library_id
-- **Type**: String (numeric)
-- **Required**: Yes
-- **Description**: Your Zotero user ID or group ID
-- **Find it**: [zotero.org/settings/keys](https://www.zotero.org/settings/keys)
+`sync.output_dir` is the generated-note directory. Changing it for the same library moves all state-managed active and removed notes after collision and permission checks. Unmanaged files are not moved.
 
-### api_key
-- **Type**: String
-- **Required**: Yes
-- **Description**: Your Zotero API key
-- **Generate**: [zotero.org/settings/keys/new](https://www.zotero.org/settings/keys/new)
-- **Permissions needed**: Read Only, Allow library access
+`sync.deletion_behavior` is either `move` or `delete`. The recommended `move` value places removed notes under `output_dir/removed/`. The `delete` value permanently deletes them.
 
-### library_type
-- **Type**: String
-- **Required**: Yes
-- **Options**: `"user"` or `"group"`
-- **Description**:
-    - `"user"`: Your personal library
-    - `"group"`: A shared group library
+`advanced.db_path` and `advanced.template_path` are optional. Empty strings select the platform state path and built-in body template. Relative paths are resolved from the directory containing `config.toml`, not from the current working directory.
 
-## Sync Section
+The configuration writer atomically replaces the file and sets mode `0600`. API keys are still secrets and must not be committed or included in diagnostic logs.
 
-### output_dir
-- **Type**: String (path)
-- **Required**: Yes
-- **Description**: Directory where Markdown files will be saved
-- **Examples**:
-    - `/Users/yourname/vault/references`
-    - `C:\Users\YourName\Documents\References`
-    - `~/Dropbox/Notes/Zotero`
+## Generated Frontmatter
 
-### deletion_behavior
-- **Type**: String
-- **Required**: Yes
-- **Options**: `"move"` or `"delete"`
-- **Description**:
-    - `"move"`: Deleted items moved to `removed/` subdirectory
-    - `"delete"`: Deleted items permanently removed from filesystem
+ZotMD owns frontmatter and writes populated fields in this order:
 
-**Recommendation:** Use `"move"` to prevent accidental data loss.
+```yaml
+---
+title: Exact publication title
+categories:
+  - sources
+kind: article
+generator: zotmd
+citation-key: example2026
+zotero-key: ABCD1234
+zotero-item-type: journalArticle
+authors:
+  - First Author
+year: 2026
+venue: Example Journal
+doi: 10.0000/example
+url: https://example.test/paper
+zotero-uri: zotero://select/library/items/ABCD1234
+zotero-tags:
+  - /reading
+zotero-states:
+  - reading
+rating: 5
+aliases:
+  - example2026
+---
+```
 
-## Advanced Section
+`categories` is always `sources`. Zotero item types are converted to kebab-case knowledge-note kinds. Only creators with `creatorType = "author"` are included, with at most five names and an `author-count` when more exist. Manual Zotero tags are retained exactly and sorted; automatic tags are excluded. Slash tags also populate `zotero-states`, and a tag consisting entirely of one to five star characters sets `rating`. ZotMD normalizes title line breaks before rendering and provides an HTML-escaped title for body headings.
 
-Both fields are optional. Leave empty (`""`) to use defaults.
+## User Notes
 
-### db_path
-- **Type**: String (path)
-- **Default**: Platform-specific data directory
-- **Description**: Custom location for sync database
-- **Default locations**:
-    - macOS: `~/Library/Application Support/zotmd/sync.sqlite`
-    - Linux: `~/.local/share/zotmd/sync.sqlite`
-    - Windows: `%LOCALAPPDATA%\zotmd\sync.sqlite`
+The built-in body always contains:
 
-### template_path
-- **Type**: String (path)
-- **Default**: Built-in template
-- **Description**: Path to custom Jinja2 template file
-- **See**: [Template Customization](#template-customization) below
+```markdown
+## Notes
+<!-- zotmd:notes:start -->
+<!-- zotmd:notes:end -->
 
-## Template Customization
+## Annotations
+```
 
-ZotMD uses Jinja2 templates to generate Markdown files.
+Only text inside those exact boundaries is user-owned and preserved. Frontmatter, the title, abstract, section headings, and annotations are regenerated. Old percent-style markers from ZotMD 0.3 are not recognized.
 
-### Using a Custom Template
+## Custom Body Templates
 
-1. Copy the default template:
-   ```bash
-   # Find built-in template location
-   python -c "import zotmd; print(zotmd.__file__)"
-   # Built-in is at: .../zotmd/templates/default.md.j2
-   ```
+A custom Jinja2 template controls only the body. ZotMD always prepends canonical frontmatter. Do not copy the built-in template as a custom template because it uses internal section variables that are not part of the custom context.
 
-2. Create your custom template:
-   ```bash
-   cp /path/to/default.md.j2 ~/my-custom-template.md.j2
-   ```
+The complete custom context contains four variables:
 
-3. Edit `config.toml`:
-   ```toml
-   [advanced]
-   template_path = "/Users/me/my-custom-template.md.j2"
-   ```
+- `item`: a `ZoteroItem` with `key`, `version`, `item_type`, `citation_key`, normalized single-line `title`, `creators`, `date`, `date_added`, `date_modified`, `abstract`, `tags`, `doi`, `url`, `pdf_link`, `publication_title`, `volume`, `issue`, `pages`, `publisher`, `venue`, `collections`, `relations`, `extra`, `creator_summary`, and `num_children`.
+- `title`: the normalized title with HTML syntax escaped, ready for a Markdown heading.
+- `annotations`: a sorted list of `Annotation` objects. Each has `key`, `parent_key`, `version`, `annotation_type`, `text`, `comment`, `color_hex`, `color_category`, `page_label`, `page_index`, `position`, `date_added`, `date_modified`, and `sort_index`.
+- `preserved_notes`: the exact text previously found inside the Notes boundaries, or an empty string.
 
-4. Re-sync with new template:
-   ```bash
-   zotmd sync --full
-   ```
-
-### Available Template Variables
-
-| Variable | Type | Description |
-|----------|------|-------------|
-| `item.title` | str | Item title |
-| `item.authors` | list | Author names |
-| `item.year` | str | Publication year |
-| `item.item_type` | str | Zotero item type |
-| `item.tags` | list | Tag strings |
-| `item.citation_key` | str | Better BibTeX citation key |
-| `item.abstract` | str | Abstract text |
-| `item.doi` | str | DOI |
-| `item.url` | str | URL |
-| `item.publication_title` | str | Journal/book title |
-| `annotations` | list | PDF annotations |
-| `last_import` | str | Timestamp of sync |
-
-### Template Example
+Undefined names are errors. A minimal custom body that keeps Notes preservation is:
 
 ```jinja2
----
-title: "{{ item.title }}"
-authors: {% for creator in item.creators %}{{ creator.lastName }}{% if not loop.last %}, {% endif %}{% endfor %}
-year: {{ item.date[:4] if item.date else '' }}
-tags: {% for tag in item.tags %}- {{ tag }}
-{% endfor %}
-citationKey: {{ item.citation_key }}
----
-
-# {{ item.title }}
-
-{% if item.abstract %}
-## Abstract
-{{ item.abstract }}
-{% endif %}
-
-{% if annotations %}
-## Annotations
-{% for annot in annotations %}
-### Page {{ annot.page_label }} ({{ annot.color_category }})
-{% if annot.text %}
-> {{ annot.text }}
-{% endif %}
-{% if annot.comment %}
-{{ annot.comment }}
-{% endif %}
-{% endfor %}
-{% endif %}
+# {{ title }}
 
 ## Notes
-<!-- Add your notes below -->
+<!-- zotmd:notes:start -->
+{{ preserved_notes }}
+<!-- zotmd:notes:end -->
+
+## Annotations
+{% for annotation in annotations %}
+{{ annotation.to_markdown() }}
+{% endfor %}
 ```
 
-## Editing Configuration
-
-### Option 1: Use zotmd config (recommended)
-```bash
-zotmd config
-```
-
-Interactive prompts with current values shown. (`zotmd init` is also available as an alias.)
-
-### Option 2: Edit file directly
-```bash
-# macOS
-open ~/.config/zotmd/config.toml
-
-# Linux
-nano ~/.config/zotmd/config.toml
-
-# Windows
-notepad %APPDATA%\zotmd\config.toml
-```
-
-After editing, verify with:
-```bash
-zotmd status
-```
-
-## Troubleshooting
-
-See [Troubleshooting](troubleshooting.md) for common issues.
+After changing a custom template, run `zotmd sync --dry-run`. ZotMD detects changes to the selected template and its recursive static `include`, `extends`, and `import` dependencies without hashing unrelated files. Dynamic template names are rejected because their dependencies cannot be tracked deterministically. A detected template or render-contract change plans a rerender of every active note.

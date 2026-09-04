@@ -1,7 +1,6 @@
 """Extract and validate Better BibTeX citation keys from Zotero items."""
 
 import re
-from typing import Optional
 
 
 class CitationKeyExtractor:
@@ -11,7 +10,7 @@ class CitationKeyExtractor:
     CITATION_KEY_PATTERN = re.compile(r"Citation Key:\s*([^\n]+)", re.IGNORECASE)
 
     @staticmethod
-    def extract(item: dict) -> Optional[str]:
+    def extract(item: dict) -> str | None:
         """
         Extract citation key from Zotero item's 'extra' field.
 
@@ -82,7 +81,7 @@ class CitationKeyExtractor:
         return True
 
     @staticmethod
-    def extract_and_validate(item: dict) -> Optional[str]:
+    def extract_and_validate(item: dict) -> str | None:
         """
         Extract and validate citation key in one step.
 

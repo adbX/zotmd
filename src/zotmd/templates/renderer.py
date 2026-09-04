@@ -1,324 +1,289 @@
-"""Jinja2 template renderer for markdown files."""
+"""Render Zotero items as canonical Markdown knowledge notes."""
 
+import hashlib
+import html
 import re
+from dataclasses import replace
 from pathlib import Path
-from typing import Optional, List
-from datetime import datetime
+from typing import Any
 
-from jinja2 import Environment, FileSystemLoader
+import yaml  # type: ignore[import-untyped]
+from jinja2 import (
+    Environment,
+    FileSystemLoader,
+    StrictUndefined,
+    TemplateNotFound,
+    meta,
+)
 
-from ..models.item import ZoteroItem
 from ..models.annotation import Annotation
+from ..models.item import ZoteroItem, normalize_title
+
+RENDER_CONTRACT_VERSION = 2
+
+_KIND_BY_ITEM_TYPE = {
+    "journalArticle": "article",
+    "preprint": "preprint",
+    "conferencePaper": "conference-paper",
+    "webpage": "web-page",
+    "computerProgram": "software",
+    "bookSection": "book-chapter",
+}
+_YEAR_PATTERN = re.compile(r"(?<!\d)[12]\d{3}(?!\d)")
+_RATING_PATTERN = re.compile(r"⭐{1,5}")
 
 
-def _format_authors_list(creators: List[dict], limit: int = 5) -> List[str]:
-    """
-    Format creator list as a list of author name strings.
+class _IndentedSafeDumper(yaml.SafeDumper):
+    """Indent block sequence items beneath their mapping key."""
 
-    Args:
-        creators: List of creator dicts from Zotero API
-        limit: Maximum number of authors to include (default 5)
-
-    Returns:
-        List of formatted author names
-    """
-    if not creators:
-        return []
-
-    names = []
-    for creator in creators:
-        if "firstName" in creator and "lastName" in creator:
-            names.append(f"{creator['firstName']} {creator['lastName']}")
-        elif "lastName" in creator:
-            names.append(creator["lastName"])
-        elif "name" in creator:
-            names.append(creator["name"])
-
-    return names[:limit]
+    def increase_indent(self, flow: bool = False, indentless: bool = False) -> None:
+        super().increase_indent(flow, False)
 
 
-_YEAR_PATTERN = re.compile(r"\b(19|20)\d{2}\b")
+def _creator_name(creator: dict[str, Any]) -> str | None:
+    first_name = creator.get("firstName")
+    last_name = creator.get("lastName")
+    if first_name and last_name:
+        return f"{first_name} {last_name}"
+    if last_name:
+        return str(last_name)
+    name = creator.get("name")
+    return str(name) if name else None
 
 
-def _extract_year(date_string: Optional[str]) -> Optional[int]:
-    """
-    Extract year from a date string.
-
-    Args:
-        date_string: Date string in various formats (e.g., "2025-01-15", "2025")
-
-    Returns:
-        Year as integer or None if not found
-    """
-    if not date_string:
-        return None
-
-    match = _YEAR_PATTERN.search(date_string)
-    return int(match.group(0)) if match else None
+def _kind(item_type: str) -> str:
+    if item_type in _KIND_BY_ITEM_TYPE:
+        return _KIND_BY_ITEM_TYPE[item_type]
+    words = re.sub(r"([a-z0-9])([A-Z])", r"\1-\2", item_type)
+    return words.lower()
 
 
-def _format_date_simple(dt: Optional[datetime]) -> Optional[str]:
-    """
-    Format datetime as YYYY-MM-DD string.
+def _year(date: str | None) -> int | None:
+    match = _YEAR_PATTERN.search(date) if date else None
+    return int(match.group()) if match else None
 
-    Args:
-        dt: datetime object
 
-    Returns:
-        Formatted date string or None
-    """
-    if not dt:
-        return None
-    return dt.strftime("%Y-%m-%d")
+def _abstract_callout(abstract: str) -> str:
+    escaped = html.escape(abstract, quote=True)
+    lines = re.split(r"\r\n?|\n", escaped)
+    return "> [!abstract]-\n" + "\n".join(
+        f"> {line}" if line else ">" for line in lines
+    )
 
 
 class TemplateRenderer:
-    """Renders markdown files using Jinja2 templates."""
+    """Render canonical frontmatter and a built-in or custom body template."""
 
-    # Pattern to extract notes section
-    NOTES_PATTERN = re.compile(r"%% begin notes %%\n(.*?)\n%% end notes %%", re.DOTALL)
-
-    # Pattern to extract annotations section
+    NOTES_PATTERN = re.compile(
+        r"^<!-- zotmd:notes:start -->\r?\n(.*?)(?:\r?\n)?"
+        r"^<!-- zotmd:notes:end -->\r?$",
+        re.MULTILINE | re.DOTALL,
+    )
     ANNOTATIONS_PATTERN = re.compile(
-        r"%% begin annotations %%\n(.*?)\n%% end annotations %%", re.DOTALL
+        r"^## Annotations[ \t]*\r?\n(?:\r?\n)?(.*)\Z",
+        re.MULTILINE | re.DOTALL,
     )
 
-    def __init__(self, template_path: Optional[Path] = None):
-        """
-        Initialize Jinja2 environment.
-
-        Args:
-            template_path: Path to custom template file. If None, uses default template.
-        """
-        # Store template path for later reference
+    def __init__(self, template_path: Path | None = None) -> None:
         self.template_path_used = template_path
+        self._custom_template = template_path is not None
 
-        if template_path and template_path.exists():
-            # Load custom template from file
+        if template_path is not None:
+            if not template_path.is_file():
+                raise FileNotFoundError(
+                    f"Custom body template does not exist: {template_path}"
+                )
             template_dir = template_path.parent
-            self.env = Environment(loader=FileSystemLoader(template_dir))
+            template_name = template_path.name
         else:
-            # Use default template (loaded from same directory)
             template_dir = Path(__file__).parent
-            self.env = Environment(loader=FileSystemLoader(template_dir))
+            template_name = "default.md.j2"
 
-        # Add custom filters BEFORE loading template
-        self.env.filters["format_creators"] = self._format_creators
-        self.env.filters["escape_quotes"] = self._escape_quotes
-        self.env.filters["clean_title"] = self._clean_title
-        self.env.filters["sanitize_tag"] = self._sanitize_tag
-        self.env.filters["format_authors_list"] = _format_authors_list
-        self.env.filters["extract_year"] = _extract_year
-        self.env.filters["format_date_simple"] = _format_date_simple
+        loader = FileSystemLoader(template_dir)
+        self.env = Environment(
+            loader=loader,
+            undefined=StrictUndefined,
+            keep_trailing_newline=True,
+        )
+        source, filename, _ = loader.get_source(self.env, template_name)
+        self.template = self.env.from_string(source)
+        self.template.name = template_name
+        self.template.filename = filename
+        self._template_hash = self._dependency_hash(loader, template_name, source)
 
-        # Now load the template (which will compile and validate filters)
-        if template_path and template_path.exists():
-            self.template = self.env.get_template(template_path.name)
-        else:
-            self.template = self.env.get_template("default.md.j2")
+    def _dependency_hash(
+        self,
+        loader: FileSystemLoader,
+        template_name: str,
+        root_source: str,
+    ) -> str:
+        """Hash the selected template and only its static recursive dependencies."""
+        sources: dict[str, str | None] = {}
 
-    @staticmethod
-    def _format_creators(creators: List[dict]) -> str:
-        """
-        Format creator list as comma-separated string.
+        def collect(name: str, source: str | None = None) -> None:
+            if name in sources:
+                return
+            if source is None:
+                try:
+                    source, _, _ = loader.get_source(self.env, name)
+                except TemplateNotFound:
+                    sources[name] = None
+                    return
+            sources[name] = source
+            references = list(meta.find_referenced_templates(self.env.parse(source)))
+            if any(reference is None for reference in references):
+                raise ValueError(
+                    "Custom template dependencies must use static template names"
+                )
+            dependencies = {
+                reference for reference in references if reference is not None
+            }
+            for dependency in sorted(dependencies):
+                collect(dependency)
 
-        Args:
-            creators: List of creator dicts
-
-        Returns:
-            Formatted string
-        """
-        if not creators:
-            return "Unknown Author"
-
-        names = []
-        for creator in creators:
-            if "firstName" in creator and "lastName" in creator:
-                names.append(f"{creator['firstName']} {creator['lastName']}")
-            elif "lastName" in creator:
-                names.append(creator["lastName"])
-            elif "name" in creator:
-                names.append(creator["name"])
-
-        return ", ".join(names) if names else "Unknown Author"
-
-    @staticmethod
-    def _escape_quotes(text: str) -> str:
-        """Escape double quotes for markdown."""
-        if not text:
-            return ""
-        return text.replace('"', '\\"')
-
-    @staticmethod
-    def _clean_title(title: str) -> str:
-        """
-        Remove problematic characters from title for use in frontmatter.
-
-        Args:
-            title: Original title
-
-        Returns:
-            Cleaned title suitable for double-quoted YAML strings
-        """
-        if not title:
-            return ""
-
-        cleaned = title
-        # Remove characters that cause issues in YAML frontmatter
-        # Note: We use double-quoted strings in the template, so single quotes are fine
-        for char in [":", "#", "^", "|", "[", "]", "\\", "/", '"']:
-            cleaned = cleaned.replace(char, "")
-
-        return cleaned
+        collect(template_name, root_source)
+        digest = hashlib.sha256(root_source.encode("utf-8"))
+        for name in sorted(sources.keys() - {template_name}):
+            source = sources[name]
+            encoded_name = name.encode("utf-8")
+            encoded_source = source.encode("utf-8") if source is not None else b""
+            digest.update(b"\0zotmd-template-dependency\0")
+            digest.update(len(encoded_name).to_bytes(8, "big"))
+            digest.update(encoded_name)
+            digest.update(b"\1" if source is not None else b"\0")
+            digest.update(len(encoded_source).to_bytes(8, "big"))
+            digest.update(encoded_source)
+        return digest.hexdigest()
 
     @staticmethod
-    def _sanitize_tag(tag: str) -> str:
-        """
-        Sanitize a tag for Obsidian compatibility.
+    def _metadata(item: ZoteroItem) -> dict[str, object]:
+        metadata: dict[str, object] = {
+            "title": normalize_title(item.title),
+            "categories": ["sources"],
+            "kind": _kind(item.item_type),
+            "generator": "zotmd",
+            "citation-key": item.citation_key,
+            "zotero-key": item.key,
+            "zotero-item-type": item.item_type,
+        }
 
-        Preserves slashes for nested tags while handling spaces properly:
-        - Removes spaces around slashes: "tools / docker" -> "tools/docker"
-        - Replaces remaining spaces with underscores: "machine learning" -> "machine_learning"
+        author_creators = [
+            creator
+            for creator in item.creators
+            if creator.get("creatorType") == "author"
+        ]
+        authors = [
+            name
+            for creator in author_creators[:5]
+            if (name := _creator_name(creator)) is not None
+        ]
+        if authors:
+            metadata["authors"] = authors
+        if len(author_creators) > 5:
+            metadata["author-count"] = len(author_creators)
 
-        Args:
-            tag: Original tag from Zotero
+        if (year := _year(item.date)) is not None:
+            metadata["year"] = year
+        if venue := item.venue or item.publication_title or item.publisher:
+            metadata["venue"] = venue
+        if item.doi:
+            metadata["doi"] = item.doi
+        if item.url:
+            metadata["url"] = item.url
+        if item.key:
+            metadata["zotero-uri"] = f"zotero://select/library/items/{item.key}"
 
-        Returns:
-            Sanitized tag suitable for Obsidian nested tags
-        """
-        if not tag:
-            return ""
+        zotero_tags = sorted(item.tags)
+        if zotero_tags:
+            metadata["zotero-tags"] = zotero_tags
+        states = sorted(
+            tag[1:] for tag in zotero_tags if tag.startswith("/") and tag[1:]
+        )
+        if states:
+            metadata["zotero-states"] = states
+        ratings = [len(tag) for tag in zotero_tags if _RATING_PATTERN.fullmatch(tag)]
+        if ratings:
+            metadata["rating"] = max(ratings)
+        if item.citation_key:
+            metadata["aliases"] = [item.citation_key]
+        return metadata
 
-        # Remove spaces around slashes to preserve nested tag structure
-        sanitized = re.sub(r"\s*/\s*", "/", tag)
+    @classmethod
+    def _frontmatter(cls, item: ZoteroItem) -> str:
+        serialized = yaml.dump(
+            cls._metadata(item),
+            Dumper=_IndentedSafeDumper,
+            allow_unicode=True,
+            default_flow_style=False,
+            sort_keys=False,
+        )
+        return f"---\n{serialized}---"
 
-        # Replace remaining spaces with underscores
-        sanitized = sanitized.replace(" ", "_")
-
-        return sanitized
-
-    def extract_notes_section(self, markdown_content: str) -> Optional[str]:
-        """
-        Extract user notes from existing markdown.
-
-        Args:
-            markdown_content: Existing markdown file content
-
-        Returns:
-            Notes content or None if not found
-        """
+    def extract_notes_section(self, markdown_content: str) -> str | None:
+        """Return exactly the user content inside the 0.4 Notes boundaries."""
         match = self.NOTES_PATTERN.search(markdown_content)
-        if match:
-            return match.group(1)
-        return None
+        return match.group(1) if match else None
 
-    def extract_annotations_section(self, markdown_content: str) -> Optional[str]:
-        """
-        Extract annotations from existing markdown.
-
-        Args:
-            markdown_content: Existing markdown file content
-
-        Returns:
-            Annotations content or None if not found
-        """
+    def extract_annotations_section(self, markdown_content: str) -> str | None:
+        """Return the generated Annotations section for current sync bookkeeping."""
         match = self.ANNOTATIONS_PATTERN.search(markdown_content)
-        if match:
-            return match.group(1)
-        return None
+        return match.group(1) if match else None
 
     def render_item(
         self,
         item: ZoteroItem,
-        annotations: List[Annotation],
+        annotations: list[Annotation],
         library_id: str,
-        preserved_notes: Optional[str] = None,
-        attachment_key: Optional[str] = None,
+        preserved_notes: str | None = None,
+        attachment_key: str | None = None,
     ) -> str:
-        """
-        Render markdown for a Zotero item.
-
-        Args:
-            item: ZoteroItem to render
-            annotations: List of annotations for this item
-            library_id: Zotero library ID
-            preserved_notes: User notes to preserve (from existing file)
-            attachment_key: PDF attachment key for annotation links
-
-        Returns:
-            Rendered markdown string
-        """
-        # Sort annotations by page and position
+        """Render one note; attachment links come from each annotation's parent."""
+        del library_id, attachment_key
+        normalized_title = normalize_title(item.title)
+        if normalized_title != item.title:
+            item = replace(item, title=normalized_title)
+        notes = preserved_notes if preserved_notes is not None else ""
         sorted_annotations = sorted(annotations)
-
-        # Prepare template context
-        context = {
+        context: dict[str, object] = {
             "item": item,
+            "title": html.escape(normalized_title, quote=False),
             "annotations": sorted_annotations,
-            "new_annotations": sorted_annotations,  # For compatibility with template
-            "library_id": library_id,
-            "now": datetime.now(),
-            "preserved_notes": preserved_notes or "-----------------------",
-            "attachment_key": attachment_key,
-            # Additional convenience variables
-            "clean_title": self._clean_title(item.title),
-            "formatted_creators": self._format_creators(item.creators),
-            "authors_list": _format_authors_list(item.creators, limit=5),
-            "year": _extract_year(item.date),
-            "date_added_simple": _format_date_simple(item.date_added),
+            "preserved_notes": notes,
         }
+        if not self._custom_template:
+            rendered_annotations = [
+                rendered
+                for annotation in sorted_annotations
+                if (rendered := annotation.to_markdown())
+            ]
+            context.update(
+                abstract_section=(
+                    f"{_abstract_callout(item.abstract)}\n\n" if item.abstract else ""
+                ),
+                notes_section=f"{notes}\n" if notes else "",
+                annotations_section=(
+                    "\n\n" + "\n".join(rendered_annotations)
+                    if rendered_annotations
+                    else ""
+                ),
+            )
 
-        # Render template
-        rendered = self.template.render(**context)
+        body = self.template.render(**context).lstrip("\r\n").rstrip("\r\n")
+        return f"{self._frontmatter(item)}\n\n{body}\n"
 
-        return rendered
-
-    def render_annotation_markdown(
-        self, annotation: Annotation, attachment_key: Optional[str] = None
-    ) -> str:
-        """
-        Render a single annotation to markdown.
-
-        Args:
-            annotation: Annotation to render
-            attachment_key: PDF attachment key for links
-
-        Returns:
-            Markdown formatted annotation
-        """
-        return annotation.to_markdown(attachment_key)
+    @staticmethod
+    def render_annotation_markdown(annotation: Annotation) -> str:
+        """Render one annotation using its own parent attachment key."""
+        return annotation.to_markdown()
 
     def get_template_hash(self) -> str:
-        """
-        Get SHA256 hash of the current template.
-
-        Returns:
-            SHA256 hash of template source content
-        """
-        # Import here to avoid circular dependency
-
-        # For built-in templates, we need to read the actual file
-        # because template.source may not be available in all Jinja2 versions
-        if self.template_path_used and self.template_path_used.exists():
-            # Custom template - read from file
-            template_content = self.template_path_used.read_text(encoding="utf-8")
-        else:
-            # Built-in template - read from templates directory
-            template_file = Path(__file__).parent / "default.md.j2"
-            template_content = template_file.read_text(encoding="utf-8")
-
-        # Import TemplateChangeDetector and compute hash
-        from ..core.template_manager import TemplateChangeDetector
-
-        return TemplateChangeDetector.compute_template_hash(template_content)
+        """Return the SHA-256 hash of the compiled body template."""
+        return self._template_hash
 
     def get_template_path_identifier(self) -> str:
-        """
-        Get identifier for the current template.
-
-        Returns:
-            "built-in" or absolute path to custom template
-        """
-        from ..core.template_manager import TemplateChangeDetector
-
-        return TemplateChangeDetector.get_template_identifier(self.template_path_used)
+        """Return ``built-in`` or the custom body's absolute path."""
+        return (
+            str(self.template_path_used.resolve())
+            if self.template_path_used is not None
+            else "built-in"
+        )

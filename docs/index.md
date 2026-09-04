@@ -1,19 +1,20 @@
 # ZotMD
 
-**Sync your Zotero library to Markdown files with automatic updates and PDF annotation extraction.**
+ZotMD synchronizes a personal Zotero library and PDF annotations to Obsidian-native Markdown. It uses authenticated, read-only Zotero Web API requests and preserves user text inside explicit Notes boundaries.
 
-ZotMD is a command-line tool that synchronizes your Zotero library to beautifully formatted Markdown files, perfect for use with Obsidian, Logseq, or any other Markdown-based note-taking app.
+## What It Does
 
-## Features
+- Generates canonical YAML frontmatter and one Markdown note per Better BibTeX citation key.
+- Detects top-level metadata changes and child-only attachment or annotation changes.
+- Keeps each annotation linked to its own Zotero attachment.
+- Preserves the user-owned Notes region during updates and citation-key renames.
+- Preflights filename collisions and withholds checkpoints after actionable failures.
+- Offers a dry run that performs no local mutation.
 
-- **Smart Sync**: Incremental sync only updates changed items
-- **PDF Annotations**: Automatically extracts highlights and notes from PDFs
-- **Customizable Templates**: Use Jinja2 templates to format your notes
-- **Citation Keys**: Uses Better BibTeX citation keys for consistent filenames
-- **User Notes**: Preserves your custom notes across syncs
-- **Configurable**: Simple TOML configuration file
-- **Cross-Platform**: Works on macOS, Linux, and Windows
+ZotMD supports personal libraries only. Synchronization requires internet access, but Zotero Desktop does not need to be running. macOS is the supported primary platform; other platforms are best effort.
 
-[Get Started!](getting_started.md){ .md-button .md-button--primary }
+[Get started](getting_started.md){ .md-button .md-button--primary }
 
+## Data Boundary
 
+Bibliographic metadata and annotations travel through Zotero's service. ZotMD does not upload local PDF bytes, call Zotero write APIs, or copy attachments into the output. Generated notes and SQLite sync state remain on the local machine.

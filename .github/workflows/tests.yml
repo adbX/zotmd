@@ -1,0 +1,79 @@
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Python ${{ matrix.python-version }}
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version:
+          - "3.13"
+          - "3.14"
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+        with:
+          version: "0.12.9"
+          enable-cache: true
+          python-version: ${{ matrix.python-version }}
+      - run: uv lock --check
+      - run: uv sync --locked --all-groups
+      - run: uv run --frozen ruff format --check src tests tools
+      - run: uv run --frozen ruff check src tests tools
+      - run: uv run --frozen mypy src
+      - run: uv run --frozen pytest -W error::ResourceWarning tests --cov=src/zotmd --cov-report=term-missing --cov-fail-under=80
+      - run: uv run --frozen rumdl check README.md CHANGELOG.md ROADMAP.md SECURITY.md docs
+      - run: uv run --frozen rumdl check tests/fixtures/rendered
+      - run: uv run --frozen --group docs zensical build --clean
+      - name: Read project version
+        id: version
+        run: |
+          uv run --frozen python - <<'PY'
+          import os
+          import tomllib
+          from pathlib import Path
+
+          version = tomllib.loads(Path("pyproject.toml").read_text())["project"]["version"]
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
+              output.write(f"version={version}\n")
+          PY
+      - run: uv build --no-sources --out-dir "$RUNNER_TEMP/zotmd-dist"
+      - name: Validate release artifacts
+        run: uv run --frozen python tools/check_release_artifacts.py "$RUNNER_TEMP/zotmd-dist" --version "${{ steps.version.outputs.version }}"
+      - name: Install and test wheel
+        env:
+          DIST_DIR: ${{ runner.temp }}/zotmd-dist
+          VENV_DIR: ${{ runner.temp }}/zotmd-wheel-venv
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          uv venv --python "${{ matrix.python-version }}" "$VENV_DIR"
+          uv pip install \
+            --python "$VENV_DIR/bin/python" \
+            "$DIST_DIR/zotmd-$RELEASE_VERSION-py3-none-any.whl" \
+            pytest==9.1.1
+          "$VENV_DIR/bin/python" - <<'PY'
+          import importlib.metadata
+          import os
+          import sys
+          from pathlib import Path
+
+          import zotmd
+
+          expected = os.environ["RELEASE_VERSION"]
+          assert importlib.metadata.version("zotmd") == expected
+          assert zotmd.__version__ == expected
+          assert Path(zotmd.__file__).is_relative_to(Path(sys.prefix))
+          PY
+          "$VENV_DIR/bin/zotmd" --help
+          env -u PYTHONPATH "$VENV_DIR/bin/pytest" -W error::ResourceWarning \
+            tests/test_core/test_sync_engine.py::test_full_sync_records_child_contract_and_each_attachment_identity

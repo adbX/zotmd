@@ -1,9 +1,10 @@
 """Data model for Zotero annotations."""
 
+import html
+import json
+import re
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional
-import json
 
 from ..utils.color_mapper import ColorMapper
 from ..utils.date_formatter import DateFormatter
@@ -20,26 +21,26 @@ class Annotation:
 
     # Annotation content
     annotation_type: str  # highlight, note, image
-    text: Optional[str] = None
-    comment: Optional[str] = None
+    text: str | None = None
+    comment: str | None = None
 
     # Color information
     color_hex: str = "#aaaaaa"
     color_category: str = "gray"
 
     # Page information
-    page_label: Optional[str] = None
-    page_index: Optional[int] = None
+    page_label: str | None = None
+    page_index: int | None = None
 
     # Position data (JSON string)
-    position: Optional[str] = None
+    position: str | None = None
 
     # Timestamps
-    date_added: Optional[datetime] = None
-    date_modified: Optional[datetime] = None
+    date_added: datetime | None = None
+    date_modified: datetime | None = None
 
     # Sort index for ordering
-    sort_index: Optional[str] = None
+    sort_index: str | None = None
 
     @classmethod
     def from_api_response(cls, annotation: dict) -> "Annotation":
@@ -119,63 +120,39 @@ class Annotation:
                 annotation_type="note",
             )
 
-    def to_markdown(self, attachment_key: Optional[str] = None) -> str:
-        """
-        Convert annotation to markdown format matching template.
+    @staticmethod
+    def _escape_source(value: str) -> str:
+        escaped = html.escape(value, quote=True)
+        return re.sub(r"\r\n?|\n", "<br>", escaped)
 
-        Args:
-            attachment_key: Key of the PDF attachment (for zotero:// link)
+    def _page_link(self) -> str:
+        page = f"Page {html.escape(self.page_label)}" if self.page_label else "Page ?"
+        query = f"page={self.page_index}&" if self.page_index is not None else ""
+        uri = (
+            f"zotero://open-pdf/library/items/{self.parent_key}"
+            f"?{query}annotation={self.key}"
+        )
+        return f"[{page}]({uri})"
 
-        Returns:
-            Markdown formatted annotation
+    def to_markdown(self) -> str:
+        """Render deterministic, HTML-safe Markdown for this annotation."""
+        link = self._page_link()
+        lines: list[str] = []
 
-        Examples:
-            >>> annot = Annotation(
-            ...     key='ABC',
-            ...     parent_key='PARENT',
-            ...     version=1,
-            ...     annotation_type='highlight',
-            ...     text='Important point',
-            ...     comment='My thoughts',
-            ...     color_category='red',
-            ...     page_label='5',
-            ...     page_index=4
-            ... )
-            >>> print(annot.to_markdown('PDF123'))
-            - <mark class="hltr-red">"Important point"</mark> [Page 5](zotero://open-pdf/library/items/PDF123?page=4&annotation=ABC)
-              - My thoughts
-        """
-        lines = []
-
-        # Main annotation line (highlight text)
-        if self.text:
-            # Escape double quotes in text
-            escaped_text = self.text.replace('"', '\\"')
-
-            # Build Zotero link
-            link_parts = []
-            if attachment_key:
-                link_parts.append(f"zotero://open-pdf/library/items/{attachment_key}")
-                if self.page_index is not None:
-                    link_parts.append(f"?page={self.page_index}&annotation={self.key}")
-                elif self.page_label:
-                    # Fallback to page label if no page index
-                    link_parts.append(f"?annotation={self.key}")
-                link = "".join(link_parts)
-            else:
-                # Fallback link without attachment
-                link = f"zotero://select/library/items/{self.parent_key}"
-
-            page_text = f"Page {self.page_label}" if self.page_label else "Page ?"
-
+        if self.annotation_type == "image":
+            lines.append(f"- Image annotation {link}")
+            if self.comment:
+                lines.append(f"  - {self._escape_source(self.comment)}")
+        elif self.text:
+            color = html.escape(self.color_category, quote=True)
             lines.append(
-                f'- <mark class="hltr-{self.color_category}">"{escaped_text}"</mark> '
-                f"[{page_text}]({link})"
+                f'- <mark class="hltr-{color}">{self._escape_source(self.text)}</mark> '
+                f"{link}"
             )
-
-        # Comment line (indented)
-        if self.comment:
-            lines.append(f"  - {self.comment}")
+            if self.comment:
+                lines.append(f"  - {self._escape_source(self.comment)}")
+        elif self.comment:
+            lines.append(f"- {self._escape_source(self.comment)} {link}")
 
         return "\n".join(lines)
 
@@ -190,19 +167,15 @@ class Annotation:
         """
         if not isinstance(other, Annotation):
             return NotImplemented
+        return self._sort_key() < other._sort_key()
 
-        # Sort by page index first
-        if self.page_index is not None and other.page_index is not None:
-            if self.page_index != other.page_index:
-                return self.page_index < other.page_index
-
-        # Then by sort index
-        if self.sort_index and other.sort_index:
-            if self.sort_index != other.sort_index:
-                return self.sort_index < other.sort_index
-
-        # Finally by date added
-        if self.date_added and other.date_added:
-            return self.date_added < other.date_added
-
-        return False
+    def _sort_key(self) -> tuple[bool, int, bool, str, bool, str, str]:
+        return (
+            self.page_index is None,
+            self.page_index if self.page_index is not None else 0,
+            self.sort_index is None,
+            self.sort_index or "",
+            self.date_added is None,
+            self.date_added.isoformat() if self.date_added else "",
+            self.key,
+        )

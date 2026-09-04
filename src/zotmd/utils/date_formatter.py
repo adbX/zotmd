@@ -1,7 +1,6 @@
 """Parse and format dates from Zotero API responses."""
 
 from datetime import datetime
-from typing import Optional
 
 
 class DateFormatter:
@@ -17,7 +16,7 @@ class DateFormatter:
     OBSIDIAN_DATETIME_FORMAT = "%Y-%m-%d %H:%M"
 
     @staticmethod
-    def parse_zotero_date(date_str: Optional[str]) -> Optional[datetime]:
+    def parse_zotero_date(date_str: str | None) -> datetime | None:
         """
         Parse Zotero ISO 8601 date string to datetime object.
 
@@ -48,7 +47,7 @@ class DateFormatter:
             return None
 
     @staticmethod
-    def to_obsidian_date(date_obj: Optional[datetime]) -> str:
+    def to_obsidian_date(date_obj: datetime | None) -> str:
         """
         Format datetime to Obsidian date-only format (YYYY-MM-DD).
 
@@ -70,7 +69,7 @@ class DateFormatter:
         return date_obj.strftime(DateFormatter.OBSIDIAN_DATE_FORMAT)
 
     @staticmethod
-    def to_obsidian_datetime(date_obj: Optional[datetime]) -> str:
+    def to_obsidian_datetime(date_obj: datetime | None) -> str:
         """
         Format datetime to Obsidian datetime format (YYYY-MM-DD HH:MM).
 
@@ -92,7 +91,7 @@ class DateFormatter:
         return date_obj.strftime(DateFormatter.OBSIDIAN_DATETIME_FORMAT)
 
     @staticmethod
-    def parse_and_format_date(zotero_date_str: Optional[str]) -> str:
+    def parse_and_format_date(zotero_date_str: str | None) -> str:
         """
         Parse Zotero date and format for Obsidian (date only).
 
@@ -110,7 +109,7 @@ class DateFormatter:
         return DateFormatter.to_obsidian_date(date_obj)
 
     @staticmethod
-    def parse_and_format_datetime(zotero_date_str: Optional[str]) -> str:
+    def parse_and_format_datetime(zotero_date_str: str | None) -> str:
         """
         Parse Zotero date and format for Obsidian (with time).
 
