@@ -1,482 +1,68 @@
 # Troubleshooting
 
-Common issues and solutions for ZotMD.
+## Authentication or Connection Failure
 
-## Configuration Issues
+Confirm that the configured ID is the numeric user ID for a personal library and that the API key has personal-library read access. Group libraries are not supported. Create a replacement key at [Zotero settings](https://www.zotero.org/settings/keys/new) if needed.
 
-### Config not found
-
-```bash
-$ zotmd sync
-Error: Not configured. Run 'zotmd config' first.
-```
-
-**Solution:** Run `zotmd config` to create the config file.
-
-### Invalid API key
+`ZOTMD_API_KEY` overrides the stored key. Check whether an old environment value is active before replacing the configuration:
 
 ```bash
-$ zotmd config
-Testing connection to Zotero...
-Error: Failed to connect to Zotero API.
-```
-
-**Solutions:**
-
-- Regenerate API key at [zotero.org/settings/keys/new](https://www.zotero.org/settings/keys/new)
-- Ensure "Allow library access" is checked
-- Check for typos (keys are case-sensitive)
-
-### Invalid library ID
-
-```bash
-✗ Error: Library not found (403 Forbidden)
-```
-
-**Solutions:**
-
-- Verify library ID at [zotero.org/settings/keys](https://www.zotero.org/settings/keys)
-- Ensure `library_type` matches (`user` vs `group`)
-- For groups, ensure you're a member
-
-### Permission denied (output directory)
-
-```bash
-Error: Permission denied: /restricted/path
-```
-
-**Solutions:**
-
-- Choose a directory you have write access to
-- Create directory first: `mkdir -p ~/notes/references`
-- Check permissions: `ls -ld ~/notes/references`
-
-## Installation Issues
-
-### Command not found: zotmd
-
-**Problem:**
-```bash
-$ zotmd --help
-zotmd: command not found
-```
-
-**Solutions:**
-
-1. **If installed with uv:**
-   ```bash
-   # Ensure uv's bin directory is in PATH
-   echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
-   source ~/.zshrc
-
-   # Verify installation
-   uv tool list
-   ```
-
-2. **If installed with pipx:**
-   ```bash
-   # Ensure pipx path
-   pipx ensurepath
-   source ~/.zshrc
-   ```
-
-3. **Reinstall:**
-   ```bash
-   uv tool install --force zotmd
-   ```
-
-### Python version too old
-
-**Problem:**
-```bash
-ERROR: Package requires Python >=3.13
-```
-
-**Solution:**
-```bash
-# Install Python 3.13+ with uv
-uv python install 3.13
-
-# Or use system package manager
-# macOS:
-brew install python@3.13
-
-# Linux:
-sudo apt install python3.13
-```
-
-## Connection Issues
-
-### Cannot connect to Zotero
-
-**Problem:**
-```bash
-$ zotmd status
-✗ Error: Connection refused
-```
-
-**Solutions:**
-
-1. **Enable API access:**
-   - Zotero -> Settings -> Advanced -> Miscellaneous
-   - Check "Allow other applications to access Zotero"
-
-2. **Verify credentials:**
-   ```bash
-   zotmd config  # Re-enter credentials
-   ```
-
-3. **Test API manually:**
-   ```bash
-   curl "https://api.zotero.org/users/YOUR_ID/items?limit=1&key=YOUR_KEY"
-   ```
-
-### 403 Forbidden Error
-
-**Problem:**
-```bash
-✗ Error: 403 Forbidden
-```
-
-**Causes & Solutions:**
-
-1. **Wrong library_type:**
-   - Personal library: Use `library_type = "user"`
-   - Group library: Use `library_type = "group"`
-
-2. **Invalid API key:**
-   - Regenerate at [zotero.org/settings/keys/new](https://www.zotero.org/settings/keys/new)
-   - Ensure "Allow library access" is checked
-
-3. **Wrong library ID:**
-   - Verify at [zotero.org/settings/keys](https://www.zotero.org/settings/keys)
-   - For groups: Use group ID, not user ID
-
-### Rate Limiting
-
-**Problem:**
-```bash
-✗ Error: 429 Too Many Requests
-```
-
-**Solution:**
-Wait a few minutes before retrying. Zotero API has rate limits:
-- Personal tier: 120 requests/minute
-- Group tier: Shared across all members
-
-## Sync Issues
-
-### Items missing citation keys
-
-**Problem:**
-```bash
-Skipped 45 items without citation keys
-```
-
-**Solution:**
-
-1. **Install Better BibTeX:**
-   - Download: [retorque.re/zotero-better-bibtex](https://retorque.re/zotero-better-bibtex/)
-   - Zotero -> Tools -> Add-ons -> Install from File
-
-2. **Generate citation keys:**
-   - Select all items in Zotero
-   - Right-click -> Better BibTeX -> Refresh BibTeX key
-
-3. **Re-sync:**
-   ```bash
-   zotmd sync
-   ```
-
-### Annotations not appearing
-
-**Problem:**
-PDF highlights not showing in Markdown files.
-
-**Solutions:**
-
-1. **Ensure PDF is in Zotero:**
-   - Attachment must be stored in Zotero (not linked file)
-   - Check: Item has PDF icon, not link icon
-
-2. **Annotations must be created in Zotero:**
-   - Use Zotero's built-in PDF reader
-   - External annotations (Adobe, Preview) won't sync
-
-3. **Force re-sync:**
-   ```bash
-   zotmd sync --full
-   ```
-
-### Deleted items reappearing
-
-**Problem:**
-Deleted Markdown files come back after sync.
-
-**Cause:**
-Items still exist in Zotero library.
-
-**Solution:**
-
-1. **Delete from Zotero first:**
-   - Delete item in Zotero
-   - Empty Zotero trash
-   - Run `zotmd sync`
-
-2. **Or remove from filesystem only:**
-   - Set `deletion_behavior = "delete"` in config
-   - Files won't be recreated if deleted locally
-
-### User notes being overwritten
-
-**Problem:**
-Custom notes in Markdown files are lost after sync.
-
-**Solution:**
-
-Place notes in the designated section:
-
-```markdown
-## Notes
-<!-- Add your notes below this line -->
-<!-- They will be preserved across syncs -->
-
-Your custom notes here...
-```
-
-Content above this section will be regenerated on each sync.
-
-## Database Issues
-
-### Corrupted database
-
-**Problem:**
-```bash
-Error: database disk image is malformed
-```
-
-**Solution:**
-
-1. **Backup current database:**
-   ```bash
-   # macOS
-   cp ~/.local/share/zotmd/sync.sqlite ~/sync.sqlite.backup
-
-   # Linux
-   cp ~/.local/share/zotmd/sync.sqlite ~/sync.sqlite.backup
-   ```
-
-2. **Delete and re-sync:**
-   ```bash
-   rm ~/.local/share/zotmd/sync.sqlite
-   zotmd sync --full
-   ```
-
-### Database locked
-
-**Problem:**
-```bash
-Error: database is locked
-```
-
-**Solution:**
-
-1. **Check for other zotmd processes:**
-   ```bash
-   ps aux | grep zotmd
-   kill <PID>  # If found
-   ```
-
-2. **Remove lock file:**
-   ```bash
-   rm ~/.local/share/zotmd/sync.sqlite-journal
-   ```
-
-## File System Issues
-
-### Permission denied
-
-**Problem:**
-```bash
-Error: Permission denied: /path/to/output
-```
-
-**Solutions:**
-
-1. **Create directory:**
-   ```bash
-   mkdir -p ~/notes/references
-   ```
-
-2. **Fix permissions:**
-   ```bash
-   chmod 755 ~/notes/references
-   ```
-
-3. **Choose different path:**
-   ```bash
-   zotmd config  # Enter accessible directory
-   ```
-
-### Filename too long
-
-**Problem:**
-```bash
-OSError: File name too long
-```
-
-**Cause:**
-Citation keys longer than filesystem limit (255 chars).
-
-**Solution:**
-
-1. **Shorten citation key in Better BibTeX:**
-   - Right-click item -> Better BibTeX -> Pin/Set citation key
-   - Enter shorter key
-
-2. **Change citation key pattern:**
-   - Zotero Settings -> Better BibTeX -> Citation Keys
-   - Use shorter pattern (e.g., `[auth:lower][year]`)
-
-### Special characters in filenames
-
-**Problem:**
-Files with invalid characters (`/`, `:`, `*`, etc.)
-
-**Solution:**
-
-ZotMD automatically sanitizes filenames, but if issues persist:
-
-1. **Check citation key:**
-   - Avoid: `< > : " / \ | ? *`
-   - Better BibTeX usually handles this
-
-2. **Manually fix:**
-   - Edit citation key in Zotero
-   - Remove problematic characters
-
-## Template Issues
-
-### Template not found
-
-**Problem:**
-```bash
-Error: Template file not found: /path/to/template.md.j2
-```
-
-**Solutions:**
-
-1. **Verify path:**
-   ```bash
-   ls -l /path/to/template.md.j2
-   ```
-
-2. **Use absolute path in config:**
-   ```toml
-   template_path = "/Users/me/templates/custom.md.j2"
-   ```
-
-3. **Reset to default:**
-   ```toml
-   template_path = ""  # Empty uses built-in
-   ```
-
-### Template syntax error
-
-**Problem:**
-```bash
-jinja2.exceptions.TemplateSyntaxError: unexpected '}'
-```
-
-**Solution:**
-
-1. **Validate Jinja2 syntax:**
-   - Check matching `{% ... %}`, `{{ ... }}`
-   - Ensure proper indentation
-
-2. **Test with default template:**
-   ```toml
-   template_path = ""
-   ```
-   ```bash
-   zotmd sync --full
-   ```
-
-3. **Debug template:**
-   ```bash
-   zotmd sync --verbose
-   ```
-
-## Performance Issues
-
-### Sync is very slow
-
-**Problem:**
-Full sync takes hours for large library.
-
-**Solutions:**
-
-1. **Use incremental sync:**
-   ```bash
-   zotmd sync  # Default, not --full
-   ```
-
-2. **Check network:**
-   - Zotero API may be slow
-   - Try at different time
-
-3. **Reduce annotation processing:**
-   - Large PDFs with many annotations take time
-   - This is expected behavior
-
-### High memory usage
-
-**Problem:**
-Process using excessive RAM.
-
-**Cause:**
-Large library with many annotations.
-
-**Mitigation:**
-
-1. **Process in batches** (not yet supported - feature request)
-2. **Close other applications**
-3. **Increase system swap space**
-
-## Getting Help
-
-If you encounter an issue not listed here:
-
-1. **Check existing issues:**
-   [github.com/adbX/zotmd/issues](https://github.com/adbX/zotmd/issues)
-
-2. **Run with verbose logging:**
-   ```bash
-   zotmd sync --verbose 2>&1 | tee debug.log
-   ```
-
-3. **Create new issue with:**
-   - Error message
-   - Steps to reproduce
-   - `debug.log` output
-   - OS and Python version
-   - `zotmd status` output
-
-## Useful Diagnostic Commands
-
-```bash
-# Check config
+test -n "$ZOTMD_API_KEY" && printf '%s\n' "ZOTMD_API_KEY is set"
 zotmd status
-
-# Test connection only
-zotmd config  # Will test during setup
-
-# View config file
-cat ~/.config/zotmd/config.toml  # macOS/Linux
-
-# Check database
-sqlite3 ~/.local/share/zotmd/sync.sqlite "SELECT COUNT(*) FROM sync_items;"
-
-# List installed version
-uv tool list | grep zotmd
 ```
+
+ZotMD requires internet access to the Zotero Web API. Zotero Desktop and its local API setting do not affect the connection.
+
+## Items Without Citation Keys
+
+Install Better BibTeX, refresh the item's citation key in Zotero, wait for Zotero's Web API state to update, then run `zotmd sync` again. Missing keys are reported but do not fail the synchronization. If a previously managed item loses its key, ZotMD keeps its note active and unchanged until the key returns or the item is deleted from Zotero.
+
+## Annotations Are Missing
+
+Annotations must exist as Zotero annotation records beneath an attachment. ZotMD fetches attachment and annotation records from the Web API and links each annotation to its own attachment key. It does not extract annotations embedded only in PDF bytes or download PDFs.
+
+Run a full preview to compare the reported annotation count:
+
+```bash
+zotmd sync --full --dry-run
+```
+
+## Target Collision
+
+Two citation keys can become the same safe filename after forbidden characters are removed, length limits are applied, or macOS case and Unicode aliases are considered. ZotMD refuses every affected item rather than choosing a suffix or overwriting a note.
+
+Assign distinct Better BibTeX citation keys, then rerun the dry run. Also remove or relocate any unmanaged file occupying a planned target only after confirming its ownership.
+
+## Managed File Is Missing
+
+ZotMD refuses to recreate a missing managed note automatically because doing so could hide an unavailable volume and lose user Notes. Restore the file or output mount from backup. If the file was intentionally removed, archive the state database and perform a reviewed fresh full sync.
+
+## Legacy or Incompatible State
+
+ZotMD 0.4 refuses a 0.3 database without modifying it and rejects the old `zotero.library_type` configuration key. Archive both the database and output, then rerun configuration for the personal-library-only schema before creating fresh state:
+
+```bash
+mv "$HOME/Library/Application Support/zotmd/sync.sqlite" \
+   "$HOME/Library/Application Support/zotmd/sync.0.3-backup.sqlite"
+zotmd config
+zotmd sync --full --dry-run
+zotmd sync --full
+```
+
+Do not delete the old output. Rename it to a dated sibling backup, choose a distinct empty output for the first 0.4 run, validate the generated corpus, and require a second incremental run to be a no-op.
+
+## Template Failure
+
+The configured custom template must exist when configuration is loaded and must use only the documented custom context. Undefined variables are errors. Custom templates own only the body and must emit the exact Notes boundaries if user text should survive rerenders.
+
+Temporarily set `advanced.template_path = ""` to test the built-in body. Use `zotmd -v sync --dry-run` for an error traceback without changing notes or state.
+
+## Permission, Move, or Delete Failure
+
+Check that the output and source parent directories are writable. ZotMD preflights operations, writes through durable temporary sibling files, refuses overwrites, and supports output moves across filesystems. It also refuses a mutation if a managed note changes after preflight. A failed operation leaves the checkpoint pending.
+
+With `deletion_behavior = "move"`, check for an existing same-named file in `removed/`. With `delete`, restore from backup if a later external failure occurs; permanent deletion should be selected only with a current backup.
+
+## Reporting an Issue
+
+Run `zotmd -v sync --dry-run --no-progress` and include the error, ZotMD version, operating system, and reproduction steps in a [GitHub issue](https://github.com/adbX/zotmd/issues). Remove API keys, local paths, private titles, and annotation content before sharing output. Never attach `config.toml` or `sync.sqlite`.

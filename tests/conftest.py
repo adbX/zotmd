@@ -21,7 +21,6 @@ def sample_config_dict() -> dict[str, Any]:
         "zotero": {
             "library_id": "1234567",
             "api_key": "test_api_key_abc123xyz",
-            "library_type": "user",
         },
         "sync": {
             "output_dir": "/tmp/test_references",

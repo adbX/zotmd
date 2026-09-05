@@ -1,0 +1,11 @@
+[global]
+disable = ["MD013"]
+exclude = ["src/zotmd/templates/**"]
+flavor = "mkdocs"
+respect-gitignore = true
+
+[per-file-flavor]
+"tests/fixtures/rendered/**/*.md" = "obsidian"
+
+[per-file-ignores]
+"tests/fixtures/rendered/**/*.md" = ["MD007", "MD025", "MD033"]

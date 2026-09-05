@@ -1,16 +1,17 @@
 [project]
 site_name = "ZotMD Documentation"
-site_description = "Sync Zotero library to Markdown files"
+site_description = "Sync a personal Zotero library and PDF annotations to Obsidian Markdown"
 site_author = "Adhithya Bhaskar"
-site_url = "https://adbX.github.io/zotmd/"
+site_url = "https://adbx.github.io/zotmd/"
 copyright = """
-Copyright &copy; 2025 Adhithya Bhaskar
+Copyright &copy; 2025-2026 Adhithya Bhaskar
 """
 
 # Read more: https://zensical.org/docs/setup/navigation/
 nav = [
   { "Home" = "index.md" },
   { "Getting Started" = "getting_started.md" },
+  { "Configuration" = "configuration.md" },
   { "Usage" = "usage.md" },
   { "Troubleshooting" = "troubleshooting.md" },
 ]

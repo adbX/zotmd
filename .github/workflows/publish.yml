@@ -1,0 +1,135 @@
+name: Publish
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build release artifacts
+    runs-on: macos-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+        with:
+          version: "0.12.9"
+          enable-cache: true
+          python-version: "3.13"
+      - name: Verify tag and project version
+        id: version
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          uv run --frozen python - <<'PY'
+          import os
+          import tomllib
+          from pathlib import Path
+
+          version = tomllib.loads(Path("pyproject.toml").read_text())["project"]["version"]
+          tag = os.environ["RELEASE_TAG"]
+          if tag != f"v{version}":
+              raise SystemExit(f"tag {tag!r} does not match project version {version!r}")
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
+              output.write(f"version={version}\n")
+          PY
+      - run: uv lock --check
+      - run: uv sync --locked --all-groups
+      - run: uv run --frozen ruff format --check src tests tools
+      - run: uv run --frozen ruff check src tests tools
+      - run: uv run --frozen mypy src
+      - run: uv run --frozen pytest -W error::ResourceWarning tests --cov=src/zotmd --cov-report=term-missing --cov-fail-under=80
+      - run: uv run --frozen rumdl check README.md CHANGELOG.md ROADMAP.md SECURITY.md docs tests/fixtures/rendered
+      - run: uv run --frozen --group docs zensical build --clean
+      - run: uv build --no-sources --out-dir "$RUNNER_TEMP/zotmd-dist"
+      - name: Validate and hash release artifacts
+        run: uv run --frozen python tools/check_release_artifacts.py "$RUNNER_TEMP/zotmd-dist" --version "${{ steps.version.outputs.version }}"
+      - name: Test release wheel on supported Python versions
+        env:
+          DIST_DIR: ${{ runner.temp }}/zotmd-dist
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          for python_version in 3.13 3.14; do
+            venv_dir="$RUNNER_TEMP/zotmd-wheel-$python_version"
+            uv venv --python "$python_version" "$venv_dir"
+            uv pip install \
+              --python "$venv_dir/bin/python" \
+              "$DIST_DIR/zotmd-$RELEASE_VERSION-py3-none-any.whl" \
+              pytest==9.1.1
+            "$venv_dir/bin/python" -c \
+              'import importlib.metadata as m, os, zotmd; assert m.version("zotmd") == zotmd.__version__ == os.environ["RELEASE_VERSION"]'
+            "$venv_dir/bin/zotmd" --help
+            env -u PYTHONPATH "$venv_dir/bin/pytest" -W error::ResourceWarning \
+              tests/test_core/test_sync_engine.py::test_full_sync_records_child_contract_and_each_attachment_identity
+          done
+      - name: Check publish inputs without uploading
+        run: uv publish --dry-run --username dry-run --password dry-run "$RUNNER_TEMP/zotmd-dist"/*
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: distributions
+          path: |
+            ${{ runner.temp }}/zotmd-dist/zotmd-${{ steps.version.outputs.version }}.tar.gz
+            ${{ runner.temp }}/zotmd-dist/zotmd-${{ steps.version.outputs.version }}-py3-none-any.whl
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/zotmd/${{ needs.build.outputs.version }}/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: distributions
+          path: ${{ runner.temp }}/zotmd-dist
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+        with:
+          version: "0.12.9"
+          enable-cache: false
+      - name: Verify artifacts and PyPI availability
+        env:
+          DIST_DIR: ${{ runner.temp }}/zotmd-dist
+          RELEASE_VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          python - <<'PY'
+          import hashlib
+          import os
+          import urllib.error
+          import urllib.request
+          from pathlib import Path
+
+          version = os.environ["RELEASE_VERSION"]
+          root = Path(os.environ["DIST_DIR"])
+          expected = {
+              f"zotmd-{version}.tar.gz",
+              f"zotmd-{version}-py3-none-any.whl",
+          }
+          files = {path.name: path for path in root.iterdir() if path.is_file()}
+          if files.keys() != expected:
+              raise SystemExit("downloaded artifact names do not match the release version")
+          for name, path in sorted(files.items()):
+              print(f"{hashlib.sha256(path.read_bytes()).hexdigest()}  {name}")
+
+          url = f"https://pypi.org/pypi/zotmd/{version}/json"
+          try:
+              with urllib.request.urlopen(url, timeout=30):
+                  pass
+          except urllib.error.HTTPError as error:
+              if error.code != 404:
+                  raise
+          else:
+              raise SystemExit(f"zotmd {version} already exists on PyPI")
+          PY
+      - run: uv publish --trusted-publishing always "$RUNNER_TEMP/zotmd-dist"/*

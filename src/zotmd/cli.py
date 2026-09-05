@@ -1,13 +1,14 @@
 """Command-line interface for zotero-md-sync."""
 
 import logging
+import os
 import sys
 from pathlib import Path
-from typing import Optional
 
 import click
 
 from .config import (
+    API_KEY_ENV_VAR,
     Config,
     config_exists,
     get_config_path,
@@ -45,26 +46,18 @@ def setup_logging(verbose: bool = False) -> None:
 
 
 def prompt_with_default(
-    prompt: str, default: Optional[str] = None, password: bool = False
+    prompt: str, default: str | None = None, password: bool = False
 ) -> str:
     """Prompt for input with an optional default value.
 
     If the user presses Enter without typing anything, the default is used.
     Returns empty string if no default and user enters nothing.
     """
-    if default:
-        if password:
-            display_default = mask_api_key(default)
-        else:
-            display_default = default
-        full_prompt = f"{prompt} [default: {display_default}]: "
+    if password:
+        label = f"{prompt} [default: {mask_api_key(default)}]" if default else prompt
+        value = click.prompt(label, hide_input=True, default="", show_default=False)
     else:
-        full_prompt = f"{prompt}: "
-
-    if password and not default:
-        # Use click.prompt for hidden input when no default
-        value = click.prompt(prompt, hide_input=True, default="", show_default=False)
-    else:
+        full_prompt = f"{prompt} [default: {default}]: " if default else f"{prompt}: "
         value = input(full_prompt).strip()
 
     if not value and default:
@@ -91,9 +84,7 @@ def sanitize_path(path_str: str) -> str:
     return path_str.strip()
 
 
-def test_connection(
-    library_id: str, api_key: str, library_type: str
-) -> tuple[bool, Optional[int]]:
+def test_connection(library_id: str, api_key: str) -> tuple[bool, int | None]:
     """Test connection to Zotero API.
 
     Returns (success, library_version).
@@ -101,7 +92,6 @@ def test_connection(
     try:
         client = ZoteroClient(
             library_id=library_id,
-            library_type=library_type,
             api_key=api_key,
         )
         version = client.get_library_version()
@@ -110,28 +100,45 @@ def test_connection(
         return False, None
 
 
-def create_sync_engine(config: Config) -> SyncEngine:
+def create_sync_engine(config: Config, *, dry_run: bool = False) -> SyncEngine:
     """Create and initialize sync engine from config."""
+    renderer = TemplateRenderer(template_path=config.get_template_path())
     zotero_client = ZoteroClient(
         library_id=config.library_id,
-        library_type=config.library_type,
         api_key=config.api_key,
     )
 
-    state_manager = StateManager(db_path=config.get_db_path())
-    renderer = TemplateRenderer(template_path=config.get_template_path())
-    file_manager = FileManager(
-        base_dir=config.output_dir,
-        deletion_behavior=config.deletion_behavior,
+    db_path = config.get_db_path()
+    state_manager = (
+        StateManager(db_path=db_path, read_only=True)
+        if dry_run and db_path.exists()
+        else None
     )
-
-    return SyncEngine(
-        zotero_client=zotero_client,
-        state_manager=state_manager,
-        renderer=renderer,
-        file_manager=file_manager,
-        library_id=config.library_id,
-    )
+    if not dry_run:
+        state_manager = StateManager(
+            db_path=db_path,
+            library_id=config.library_id,
+            output_root=config.output_dir,
+        )
+    try:
+        file_manager = FileManager(
+            base_dir=config.output_dir,
+            deletion_behavior=config.deletion_behavior,
+            create=False,
+            read_only=dry_run,
+        )
+        return SyncEngine(
+            zotero_client=zotero_client,
+            state_manager=state_manager,
+            renderer=renderer,
+            file_manager=file_manager,
+            library_id=config.library_id,
+            dry_run=dry_run,
+        )
+    except BaseException:
+        if state_manager is not None:
+            state_manager.close()
+        raise
 
 
 @click.group()
@@ -140,8 +147,7 @@ def create_sync_engine(config: Config) -> SyncEngine:
 def main(ctx: click.Context, verbose: bool) -> None:
     """ZotMD - Synchronize Zotero library to Markdown files.
 
-    Export your Zotero items and PDF annotations to Markdown for use
-    with Obsidian, Logseq, or other note-taking apps.
+    Export your Zotero items and PDF annotations as Obsidian-native Markdown.
 
     Get started with: zotmd config
     """
@@ -162,7 +168,7 @@ def init(ctx: click.Context) -> None:
     click.echo("=" * 35)
 
     # Load existing config if available
-    existing: Optional[Config] = None
+    existing: Config | None = None
     if config_exists():
         try:
             existing = load_config()
@@ -183,22 +189,23 @@ def init(ctx: click.Context) -> None:
         click.echo("Error: Library ID is required.", err=True)
         sys.exit(1)
 
-    api_key = prompt_with_default(
-        "API Key",
-        existing.api_key if existing else None,
-        password=True,
-    )
-    if not api_key:
-        click.echo("Error: API Key is required.", err=True)
-        sys.exit(1)
-
-    library_type = prompt_with_default(
-        "Library Type (user/group)",
-        existing.library_type if existing else "user",
-    )
-    if library_type not in ("user", "group"):
-        click.echo("Error: Library type must be 'user' or 'group'.", err=True)
-        sys.exit(1)
+    environment_api_key = os.environ.get(API_KEY_ENV_VAR)
+    if environment_api_key is not None and environment_api_key.strip():
+        api_key = environment_api_key
+        stored_api_key = existing.stored_api_key if existing else None
+        persist_api_key = stored_api_key is not None
+        click.echo(f"Using {API_KEY_ENV_VAR}; the environment key will not be stored.")
+    else:
+        api_key = prompt_with_default(
+            "API Key",
+            existing.stored_api_key if existing else None,
+            password=True,
+        )
+        if not api_key:
+            click.echo("Error: API Key is required.", err=True)
+            sys.exit(1)
+        stored_api_key = api_key
+        persist_api_key = True
 
     output_dir_str = prompt_with_default(
         "Output Directory",
@@ -237,10 +244,21 @@ def init(ctx: click.Context) -> None:
     )
     template_path_str = sanitize_path(template_path_str) if template_path_str else ""
     template_path = Path(template_path_str).expanduser() if template_path_str else None
+    if template_path is not None:
+        template_to_validate = template_path
+        if not template_to_validate.is_absolute():
+            template_to_validate = get_config_path().parent / template_to_validate
+        template_to_validate = template_to_validate.resolve()
+        if not template_to_validate.is_file():
+            click.echo(
+                f"Error: Custom template is not a file: {template_to_validate}",
+                err=True,
+            )
+            sys.exit(1)
 
     # Test connection
     click.echo("\nTesting connection to Zotero...")
-    success, version = test_connection(library_id, api_key, library_type)
+    success, version = test_connection(library_id, api_key)
 
     if success:
         click.echo(f"Connected successfully (library version {version})")
@@ -255,11 +273,12 @@ def init(ctx: click.Context) -> None:
     config = Config(
         library_id=library_id,
         api_key=api_key,
-        library_type=library_type,
         output_dir=output_dir,
         deletion_behavior=deletion_behavior,
         db_path=db_path,
         template_path=template_path,
+        stored_api_key=stored_api_key,
+        persist_api_key=persist_api_key,
     )
 
     save_config(config)
@@ -284,9 +303,14 @@ def config_cmd(ctx: click.Context) -> None:
 
 @main.command()
 @click.option("--full", is_flag=True, help="Force full sync (re-import all items)")
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Report changes without modifying state or files",
+)
 @click.option("--no-progress", is_flag=True, help="Disable progress bar")
 @click.pass_context
-def sync(ctx: click.Context, full: bool, no_progress: bool) -> None:
+def sync(ctx: click.Context, full: bool, dry_run: bool, no_progress: bool) -> None:
     """Synchronize Zotero library to Markdown files.
 
     By default, performs an incremental sync (only changed items since last sync).
@@ -304,42 +328,60 @@ def sync(ctx: click.Context, full: bool, no_progress: bool) -> None:
 
     click.echo(f"Syncing to {config.output_dir}")
 
-    engine = create_sync_engine(config)
-
+    engine: SyncEngine | None = None
     try:
+        engine = create_sync_engine(config, dry_run=dry_run)
         if full:
-            click.echo("Performing full sync...")
+            click.echo(
+                "Planning full sync..." if dry_run else "Performing full sync..."
+            )
             result = engine.full_sync(show_progress=not no_progress)
         else:
-            click.echo("Performing incremental sync...")
+            click.echo(
+                "Planning incremental sync..."
+                if dry_run
+                else "Performing incremental sync..."
+            )
             result = engine.incremental_sync(show_progress=not no_progress)
-
-        # Display results
-        click.echo("\n" + "=" * 50)
-        click.echo("Sync Complete")
-        click.echo("=" * 50)
-        click.echo(f"  Items processed: {result.total_items_processed}")
-        click.echo(f"  Items created:   {result.items_created}")
-        click.echo(f"  Items updated:   {result.items_updated}")
-        click.echo(f"  Items removed:   {result.items_removed}")
-        click.echo(f"  Items skipped:   {result.items_skipped}")
-        click.echo(f"  Annotations:     {result.annotations_synced}")
-
-        if result.errors:
-            click.echo(f"\nErrors ({len(result.errors)}):", err=True)
-            for error in result.errors[:5]:
-                click.echo(f"  - {error}", err=True)
-            if len(result.errors) > 5:
-                click.echo(f"  ... and {len(result.errors) - 5} more", err=True)
-
-        click.echo("=" * 50)
-
     except Exception as e:
         click.echo(f"Error: Sync failed: {e}", err=True)
         if ctx.obj.get("verbose"):
             import traceback
 
             traceback.print_exc()
+        sys.exit(1)
+    finally:
+        if engine is not None and engine.state is not None:
+            engine.state.close()
+
+    click.echo("\n" + "=" * 50)
+    click.echo("Dry Run Complete" if dry_run else "Sync Complete")
+    click.echo("=" * 50)
+    click.echo(f"  Items processed: {result.total_items_processed}")
+    click.echo(f"  Items created:   {result.items_created}")
+    click.echo(f"  Items updated:   {result.items_updated}")
+    click.echo(f"  Items renamed:   {result.items_renamed}")
+    click.echo(f"  Items removed:   {result.items_removed}")
+    click.echo(f"  Items deleted:   {result.items_deleted}")
+    click.echo(f"  Output moves:    {result.output_items_moved}")
+    click.echo(f"  Items skipped:   {result.items_skipped}")
+    click.echo(f"  Annotations:     {result.annotations_synced}")
+    click.echo(f"  Collisions:      {result.target_collisions}")
+
+    if result.missing_citation_keys:
+        click.echo(
+            f"\nMissing citation keys ({len(result.missing_citation_keys)}): "
+            + ", ".join(result.missing_citation_keys)
+        )
+    if result.errors:
+        click.echo(f"\nErrors ({len(result.errors)}):", err=True)
+        for error in result.errors[:5]:
+            click.echo(f"  - {error}", err=True)
+        if len(result.errors) > 5:
+            click.echo(f"  ... and {len(result.errors) - 5} more", err=True)
+
+    click.echo("=" * 50)
+    if result.errors:
         sys.exit(1)
 
 
@@ -362,28 +404,28 @@ def status(ctx: click.Context) -> None:
         try:
             config = load_config()
             click.echo(f"  Library ID: {config.library_id}")
-            click.echo(f"  Library Type: {config.library_type}")
+            click.echo("  Library Type: personal")
             click.echo(f"  Output Dir: {config.output_dir}")
             click.echo(f"  Deletion: {config.deletion_behavior}")
             click.echo(f"  Database: {config.get_db_path()}")
         except Exception as e:
             click.echo(f"  Error: Failed to read config: {e}", err=True)
             click.echo("=" * 50 + "\n")
-            return
+            ctx.exit(1)
     else:
         click.echo("  Not configured. Run 'zotmd config' first.")
         click.echo("=" * 50 + "\n")
-        return
+        ctx.exit(1)
 
     # Connection test
+    failed = False
     click.echo("\nConnection:")
-    success, version = test_connection(
-        config.library_id, config.api_key, config.library_type
-    )
+    success, version = test_connection(config.library_id, config.api_key)
     if success:
         click.echo("  Status: Connected")
         click.echo(f"  Library version: {version}")
     else:
+        failed = True
         click.echo("  Status: Connection failed")
         click.echo("  Check credentials at: https://www.zotero.org/settings/keys")
 
@@ -392,8 +434,8 @@ def status(ctx: click.Context) -> None:
     if db_path.exists():
         click.echo("\nSync Statistics:")
         try:
-            state_manager = StateManager(db_path=db_path)
-            stats = state_manager.get_sync_stats()
+            with StateManager(db_path=db_path, read_only=True) as state_manager:
+                stats = state_manager.get_sync_stats()
             click.echo(f"  Active items: {stats['active_items']}")
             click.echo(f"  Removed items: {stats['removed_items']}")
             click.echo(f"  Total annotations: {stats['total_annotations']}")
@@ -402,15 +444,23 @@ def status(ctx: click.Context) -> None:
                 f"  Last incr. sync: {stats['last_incremental_sync'] or 'Never'}"
             )
             click.echo(
-                f"  Library version: {stats['last_library_version'] or 'Unknown'}"
+                "  Library version: "
+                + (
+                    str(stats["last_library_version"])
+                    if stats["last_library_version"] is not None
+                    else "Unknown"
+                )
             )
         except Exception as e:
+            failed = True
             click.echo(f"  Error: Failed to read database: {e}", err=True)
     else:
         click.echo("\nSync Statistics:")
         click.echo("  No sync data yet. Run 'zotmd sync --full' first.")
 
     click.echo("=" * 50 + "\n")
+    if failed:
+        ctx.exit(1)
 
 
 if __name__ == "__main__":

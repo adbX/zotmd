@@ -16,9 +16,27 @@ ENV/
 
 # Environment files
 .env
+.env.*
+!.env.example
+!.env.sample
 
 # Project data
+*.db
+*.db3
 *.sqlite
+*.sqlite3
+*.db-journal
+*.db-shm
+*.db-wal
+*.db3-journal
+*.db3-shm
+*.db3-wal
+*.sqlite-journal
+*.sqlite-shm
+*.sqlite-wal
+*.sqlite3-journal
+*.sqlite3-shm
+*.sqlite3-wal
 zotero_sync.log
 references/
 
@@ -31,7 +49,11 @@ references/
 
 # Testing
 .coverage
+.coverage.*
+coverage.xml
+.cache/
 .pytest_cache/
+.rumdl_cache/
 htmlcov/
 .tox/
 .nox/
@@ -39,6 +61,10 @@ htmlcov/
 # Documentation
 site/
 docs/_build/
+
+# Release artifacts
+*.whl
+*.tar.gz
 
 # OS
 .DS_Store

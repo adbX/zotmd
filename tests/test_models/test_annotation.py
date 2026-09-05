@@ -30,3 +30,11 @@ def test_annotation_without_page_label(sample_annotation):
     annotation = Annotation.from_api_response(sample_annotation)
 
     assert annotation.page_label == ""
+
+
+def test_annotation_parent_is_its_attachment_key(sample_annotation):
+    sample_annotation["data"]["parentItem"] = "PDF-ATTACHMENT"
+
+    annotation = Annotation.from_api_response(sample_annotation)
+
+    assert annotation.parent_key == "PDF-ATTACHMENT"
