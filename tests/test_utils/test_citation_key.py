@@ -9,6 +9,28 @@ def test_extract_citation_key_basic():
     assert CitationKeyExtractor.extract(item) == "doe2024sample"
 
 
+def test_extract_prefers_nonblank_native_citation_key():
+    item = {
+        "data": {
+            "citationKey": " native2026 ",
+            "extra": "Citation Key: fallback2026",
+        }
+    }
+
+    assert CitationKeyExtractor.extract(item) == "native2026"
+
+
+def test_extract_uses_extra_when_native_citation_key_is_blank():
+    item = {
+        "data": {
+            "citationKey": "  ",
+            "extra": "Citation Key: fallback2026",
+        }
+    }
+
+    assert CitationKeyExtractor.extract(item) == "fallback2026"
+
+
 def test_extract_citation_key_with_other_fields():
     """Test extraction when other fields are present."""
     item = {
@@ -17,6 +39,12 @@ def test_extract_citation_key_with_other_fields():
         }
     }
     assert CitationKeyExtractor.extract(item) == "smith2023test"
+
+
+def test_extract_ignores_unanchored_citation_key_text():
+    item = {"data": {"extra": "Comment: not a Citation Key: accidental"}}
+
+    assert CitationKeyExtractor.extract(item) is None
 
 
 def test_extract_citation_key_case_insensitive():

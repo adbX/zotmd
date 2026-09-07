@@ -2,6 +2,8 @@
 
 ZotMD uses one closed-schema TOML file. Unknown sections and keys are rejected so misspellings cannot silently change behavior.
 
+This file configures `zotmd sync` and `zotmd status` only. The [local paper-source API](paper_source_api.md) does not load configuration, use synchronization state, or accept a `zotero.data_dir` setting.
+
 ## Locations
 
 | Data | macOS default | Linux default |
@@ -36,6 +38,8 @@ template_path = ""
 `advanced.db_path` and `advanced.template_path` are optional. Empty strings select the platform state path and built-in body template. Relative paths are resolved from the directory containing `config.toml`, not from the current working directory.
 
 The configuration writer atomically replaces the file and sets mode `0600`. API keys are still secrets and must not be committed or included in diagnostic logs.
+
+The Web API key is never used for local paper discovery. Local API reads are unauthenticated and must remain on loopback; never forward Zotero Desktop's port 23119.
 
 ## Generated Frontmatter
 

@@ -97,7 +97,7 @@ def sample_annotation() -> dict[str, Any]:
 
 @pytest.fixture
 def sample_zotero_item_no_citation_key() -> dict[str, Any]:
-    """Sample Zotero item without a citation key (should be skipped)."""
+    """Sample Zotero item that note synchronization skips when its key is absent."""
     return {
         "key": "NOCITE123",
         "version": 5,

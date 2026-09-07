@@ -1,7 +1,7 @@
 [project]
 name = "zotmd"
-version = "0.4.0"
-description = "Sync a personal Zotero library and PDF annotations to Obsidian Markdown"
+version = "0.5.0"
+description = "Sync Zotero notes and discover already-local papers through a typed API"
 readme = "README.md"
 authors = [
     { name = "Adhithya Bhaskar", email = "adhithyabhaskar@gmail.com" }
@@ -22,10 +22,11 @@ classifiers = [
 dependencies = [
     "alive-progress>=3.3.0",
     "click>=8.5.0",
+    "httpx2>=2.12.0,<3",
     "jinja2>=3.1.6",
     "platformdirs>=4.11.7",
     "pyyaml>=6.0.3",
-    "pyzotero>=1.15.1",
+    "pyzotero>=1.15.1,<2",
     "tomli-w>=1.2.0",
 ]
 

@@ -4,15 +4,17 @@ import re
 
 
 class CitationKeyExtractor:
-    """Extracts Better BibTeX citation keys from Zotero item 'extra' fields."""
+    """Extract Better BibTeX citation keys from Zotero item data."""
 
-    # Pattern matches "Citation Key: <key>" in the extra field
-    CITATION_KEY_PATTERN = re.compile(r"Citation Key:\s*([^\n]+)", re.IGNORECASE)
+    CITATION_KEY_PATTERN = re.compile(
+        r"^[ \t]*Citation Key:[ \t]*([^\r\n]+?)[ \t]*$",
+        re.IGNORECASE | re.MULTILINE,
+    )
 
     @staticmethod
     def extract(item: dict) -> str | None:
         """
-        Extract citation key from Zotero item's 'extra' field.
+        Prefer Zotero's native citation key and fall back to the Extra field.
 
         Args:
             item: Zotero item dictionary with 'data' key
@@ -30,7 +32,12 @@ class CitationKeyExtractor:
             None
         """
         try:
-            extra = item.get("data", {}).get("extra", "")
+            data = item.get("data", {})
+            native = data.get("citationKey")
+            if isinstance(native, str) and native.strip():
+                return native.strip()
+
+            extra = data.get("extra", "")
             if not extra:
                 return None
 

@@ -11,6 +11,8 @@
 
 Global verbose logging precedes the command: `zotmd -v sync`.
 
+The local paper-source API is a Python interface rather than a CLI command. It does not alter any command in this table or reuse their configuration and state.
+
 ## Sync Options
 
 ```text
@@ -26,6 +28,12 @@ zotmd sync [--full] [--dry-run] [--no-progress]
 The default incremental operation fetches changed top-level items plus all current attachments and annotations. A deterministic child signature catches annotation additions, edits, deletions, same-count changes, and attachment-only changes even when Zotero does not return the parent as modified.
 
 Web API calls remain serial. Pyzotero follows Zotero's server-provided backoff and retry instructions.
+
+## Local Paper Discovery
+
+Call `iter_papers(tag="paper-source")` while Zotero 10 is running with local API access enabled. The call makes one initial complete snapshot attempt plus at most three retries if the local library version changes. It returns no records until the full snapshot is stable and validated.
+
+Discovery needs no Web API key or internet connection. It ignores child notes, annotations, HTML snapshots, and ordinary non-PDF attachments. It does not run synchronization, inspect SQLite state or generated notes, contact WebDAV, or download a PDF. See the [local paper-source API](paper_source_api.md) for the record and failure contracts.
 
 ## Results and Failures
 
