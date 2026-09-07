@@ -13,6 +13,18 @@ zotmd status
 
 ZotMD requires internet access to the Zotero Web API. Zotero Desktop and its local API setting do not affect the connection.
 
+## Local Paper Discovery Cannot Connect
+
+The local paper-source API has the opposite runtime boundary from synchronization: Zotero 10 must be running, and **Settings > Advanced > Allow other applications on this computer to communicate with Zotero** must be enabled. Discovery uses no API key and needs no internet connection.
+
+Keep Zotero's port 23119 bound to the local machine. Do not forward it over SSH or expose it through a proxy because local API reads are unauthenticated.
+
+## A Paper PDF Is Unavailable
+
+The `local-file-unavailable` diagnostic means Zotero reported a stored PDF path but no file exists there. This includes WebDAV attachments that Zotero has not downloaded. Open or otherwise download the attachment through Zotero Desktop, then create a new snapshot. ZotMD never authenticates to WebDAV or triggers the download itself.
+
+Linked attachments, symbolic links, empty files, directories, malformed file URLs, MIME and extension disagreements, and multiple PDF candidates have separate blocking diagnostics. Do not pass an attachment path to another program unless `primary_pdf` is present and its explicit `fingerprint()` call succeeds.
+
 ## Items Without Citation Keys
 
 Install Better BibTeX, refresh the item's citation key in Zotero, wait for Zotero's Web API state to update, then run `zotmd sync` again. Missing keys are reported but do not fail the synchronization. If a previously managed item loses its key, ZotMD keeps its note active and unchanged until the key returns or the item is deleted from Zotero.

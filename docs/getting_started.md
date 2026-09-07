@@ -59,3 +59,11 @@ Use `zotmd sync` for later incremental updates.
 ZotMD 0.4 intentionally does not migrate 0.3 state, old Notes markers, or the old `zotero.library_type` configuration key. Keep the existing output as a backup, archive the old `sync.sqlite`, then run `zotmd config` to rewrite the configuration for a personal library and choose a new empty output directory. Run a fresh 0.4 full sync and keep the backups until the new corpus and a second no-op incremental sync have been checked.
 
 Continue with [Configuration](configuration.md) and [Usage](usage.md).
+
+## Using the Paper-Source API
+
+The paper-source API is part of the unreleased 0.5 source and is not included in the latest PyPI package yet. `uv tool install zotmd` will provide it only after 0.5 is published.
+
+Paper discovery is independent of the setup above. It does not read `config.toml`, `sync.sqlite`, generated notes, or the Web API key. Start Zotero 10, enable local API access in its advanced settings, ensure the selected top-level papers have one exact manual tag, and call `iter_papers(tag="paper-source")` from Python.
+
+Zotero remains responsible for WebDAV. Open or download a PDF through Zotero before discovery if it is not already local; ZotMD reports an unavailable file but does not fetch it. See the [local paper-source API](paper_source_api.md) for imports, diagnostics, and fingerprinting.

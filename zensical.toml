@@ -1,6 +1,6 @@
 [project]
 site_name = "ZotMD Documentation"
-site_description = "Sync a personal Zotero library and PDF annotations to Obsidian Markdown"
+site_description = "Sync Zotero notes and discover already-local papers through a typed API"
 site_author = "Adhithya Bhaskar"
 site_url = "https://adbx.github.io/zotmd/"
 copyright = """
@@ -11,6 +11,7 @@ Copyright &copy; 2025-2026 Adhithya Bhaskar
 nav = [
   { "Home" = "index.md" },
   { "Getting Started" = "getting_started.md" },
+  { "Local Paper-Source API" = "paper_source_api.md" },
   { "Configuration" = "configuration.md" },
   { "Usage" = "usage.md" },
   { "Troubleshooting" = "troubleshooting.md" },

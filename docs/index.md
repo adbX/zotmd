@@ -1,6 +1,8 @@
 # ZotMD
 
-ZotMD synchronizes a personal Zotero library and PDF annotations to Obsidian-native Markdown. It uses authenticated, read-only Zotero Web API requests and preserves user text inside explicit Notes boundaries.
+ZotMD synchronizes a personal Zotero library and PDF annotations to Obsidian-native Markdown. It also exposes an immutable local API for discovering tagged papers and already-local PDFs through Zotero Desktop.
+
+The paper-source API is currently part of the unreleased 0.5 source. The latest PyPI package does not include it yet.
 
 ## What It Does
 
@@ -10,11 +12,12 @@ ZotMD synchronizes a personal Zotero library and PDF annotations to Obsidian-nat
 - Preserves the user-owned Notes region during updates and citation-key renames.
 - Preflights filename collisions and withholds checkpoints after actionable failures.
 - Offers a dry run that performs no local mutation.
+- Returns complete, typed paper snapshots without loading synchronization configuration or state.
 
-ZotMD supports personal libraries only. Synchronization requires internet access, but Zotero Desktop does not need to be running. macOS is the supported primary platform; other platforms are best effort.
+ZotMD supports personal libraries only. Synchronization requires internet access and a read-only Web API key, but Zotero Desktop does not need to be running. [Paper discovery](paper_source_api.md) instead requires Zotero 10 and local API access, but needs no credential or internet connection. macOS is the supported primary platform; other platforms are best effort.
 
 [Get started](getting_started.md){ .md-button .md-button--primary }
 
 ## Data Boundary
 
-Bibliographic metadata and annotations travel through Zotero's service. ZotMD does not upload local PDF bytes, call Zotero write APIs, or copy attachments into the output. Generated notes and SQLite sync state remain on the local machine.
+Synchronization metadata and annotations travel through Zotero's service. Paper discovery makes unauthenticated read requests only to Zotero Desktop on loopback, and the ZotMD process reads PDF bytes only when `fingerprint()` is called. Zotero Desktop may hash local attachments while producing API metadata. ZotMD does not call Zotero write APIs, contact WebDAV, download unavailable files, or copy attachments into the output. Generated notes and SQLite sync state remain on the local machine.

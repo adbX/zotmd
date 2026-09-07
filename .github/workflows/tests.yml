@@ -61,19 +61,98 @@ jobs:
             --python "$VENV_DIR/bin/python" \
             "$DIST_DIR/zotmd-$RELEASE_VERSION-py3-none-any.whl" \
             pytest==9.1.1
+          (
+          cd "$RUNNER_TEMP"
           "$VENV_DIR/bin/python" - <<'PY'
+          import hashlib
           import importlib.metadata
           import os
           import sys
+          import tempfile
           from pathlib import Path
 
           import zotmd
+          import zotmd.paper_source as paper_source
 
           expected = os.environ["RELEASE_VERSION"]
           assert importlib.metadata.version("zotmd") == expected
           assert zotmd.__version__ == expected
           assert Path(zotmd.__file__).is_relative_to(Path(sys.prefix))
+          assert Path(paper_source.__file__).is_relative_to(Path(sys.prefix))
+          assert zotmd.__all__ == [
+              "__version__",
+              "AttachmentAvailability",
+              "Creator",
+              "Diagnostic",
+              "FileFingerprint",
+              "Identifier",
+              "Paper",
+              "PdfAttachment",
+              "Tag",
+              "iter_papers",
+          ]
+          assert all(getattr(zotmd, name) is not None for name in zotmd.__all__)
+
+          class MockLocalClient:
+              def __init__(self, path):
+                  self.path = path
+
+              def library_version(self, expected_server_id=None):
+                  return 7, "wheel-test-server"
+
+              def tagged_top_items(self, tag, expected_server_id):
+                  return ({
+                      "key": "PARENT23",
+                      "version": 6,
+                      "library": {"type": "user", "id": 123},
+                      "links": {},
+                      "meta": {},
+                      "data": {
+                          "key": "PARENT23",
+                          "version": 6,
+                          "itemType": "journalArticle",
+                          "title": "Synthetic paper",
+                          "citationKey": "synthetic2026",
+                          "tags": [{"tag": tag}],
+                      },
+                  },)
+
+              def children(self, item_key, expected_server_id):
+                  return ({
+                      "key": "ATTACH23",
+                      "version": 5,
+                      "library": {"type": "user", "id": 123},
+                      "links": {"enclosure": {"href": self.path.as_uri()}},
+                      "meta": {},
+                      "data": {
+                          "key": "ATTACH23",
+                          "version": 5,
+                          "itemType": "attachment",
+                          "parentItem": item_key,
+                          "title": "Synthetic PDF",
+                          "filename": "paper.pdf",
+                          "contentType": "application/pdf",
+                          "linkMode": "imported_file",
+                      },
+                  },)
+
+              def file_url(self, attachment_key, expected_server_id):
+                  raise AssertionError("enclosure URL should be used")
+
+              def close(self):
+                  pass
+
+          with tempfile.TemporaryDirectory() as directory:
+              path = Path(directory).resolve() / "paper.pdf"
+              content = b"synthetic wheel PDF"
+              path.write_bytes(content)
+              paper_source._LocalPaperClient = lambda: MockLocalClient(path)
+              paper = next(zotmd.iter_papers(tag="wheel-test"))
+              assert paper.primary_pdf is not None
+              fingerprint = paper.primary_pdf.fingerprint()
+              assert fingerprint.sha256 == hashlib.sha256(content).hexdigest()
           PY
+          )
           "$VENV_DIR/bin/zotmd" --help
           env -u PYTHONPATH "$VENV_DIR/bin/pytest" -W error::ResourceWarning \
             tests/test_core/test_sync_engine.py::test_full_sync_records_child_contract_and_each_attachment_identity

@@ -2,6 +2,20 @@
 
 This changelog records user-visible changes to ZotMD.
 
+## 0.5.0 - Unreleased
+
+### Added
+
+- Added `iter_papers()` and immutable paper, identifier, diagnostic, PDF attachment, and fingerprint records for Zotero 10's local HTTP API.
+- Added stable version-bracketed snapshots, exact manual-tag selection, DOI and arXiv normalization, complete PDF-candidate classification, and lazy one-pass SHA-256 and MD5 fingerprinting.
+- Added no-follow local path validation for already-local stored attachments and diagnostics for unavailable, linked, unsupported, ambiguous, malformed, empty, unreadable, and symlinked PDF candidates.
+
+### Changed
+
+- Native Zotero `citationKey` metadata now takes precedence over the structured Better BibTeX `Citation Key:` line in `Extra`.
+- Pyzotero is constrained to `>=1.15.1,<2` and httpx2 to `>=2.12.0,<3` for the characterized Zotero 10 local API behavior. The loopback client ignores environment proxies and rejects redirects.
+- Existing `zotmd sync` behavior remains on the authenticated Zotero Web API and schema-4 state; paper discovery loads neither synchronization configuration nor state.
+
 ## 0.4.0 - 2026-09-03
 
 ### Added

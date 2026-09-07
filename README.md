@@ -1,6 +1,6 @@
 # ZotMD
 
-ZotMD synchronizes a personal Zotero library and its PDF annotations to Obsidian-native Markdown. It reads metadata and annotations through the Zotero Web API, writes one note per item with a Better BibTeX citation key, and preserves user text inside an explicit Notes region.
+ZotMD synchronizes a personal Zotero library and its PDF annotations to Obsidian-native Markdown. It also exposes an immutable Python API for discovering tagged papers and already-local PDFs through Zotero Desktop. The synchronization command continues to use the Zotero Web API; paper discovery uses the local API and does not load synchronization configuration or state.
 
 ## Requirements
 
@@ -9,6 +9,8 @@ ZotMD synchronizes a personal Zotero library and its PDF annotations to Obsidian
 - [Better BibTeX](https://retorque.re/zotero-better-bibtex/) citation keys.
 - A dedicated [Zotero API key](https://www.zotero.org/settings/keys/new) with personal-library read access and no write access.
 - Internet access during synchronization. Zotero Desktop does not need to be running.
+
+The paper-source API instead requires Zotero 10 to be running with local API access enabled. Its reads need no credential or internet connection, and it never downloads unavailable WebDAV files.
 
 ## Install
 
@@ -22,6 +24,23 @@ zotmd sync --full
 ```
 
 Run `zotmd sync` for subsequent incremental synchronizations. ZotMD detects metadata changes, child-only annotation and attachment changes, citation-key renames, and removals.
+
+## Paper Discovery
+
+The paper-source API is part of the unreleased 0.5 source and is not included in the latest PyPI package yet. The installation command above will provide it only after 0.5 is published.
+
+Discover one complete snapshot by exact manual tag:
+
+```python
+from zotmd import iter_papers
+
+for paper in iter_papers(tag="paper-source"):
+    if attachment := paper.primary_pdf:
+        fingerprint = attachment.fingerprint()
+        print(paper.key, fingerprint.sha256)
+```
+
+The ZotMD process reads PDF bytes only when `fingerprint()` is called. Zotero Desktop may perform its own metadata hash while answering the local API. Discovery accepts stored PDFs that Zotero has already made local, rejects symlinked or changed paths, and returns diagnostics for missing metadata, unavailable files, unsupported attachment modes, and ambiguous multi-PDF items. See the [local paper-source API](https://adbX.github.io/zotmd/paper_source_api/) for the complete contract.
 
 ## Credentials
 
@@ -57,7 +76,7 @@ ZotMD 0.4 requires fresh state and does not accept the old `zotero.library_type`
 
 ## Documentation
 
-See the [ZotMD documentation](https://adbX.github.io/zotmd/) for setup, configuration, template context, generated metadata, commands, and troubleshooting.
+See the [ZotMD documentation](https://adbX.github.io/zotmd/) for synchronization setup, the local paper-source API, configuration, template context, generated metadata, commands, and troubleshooting.
 
 ## License
 

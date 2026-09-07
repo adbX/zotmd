@@ -920,11 +920,12 @@ wheels = [
 
 [[package]]
 name = "zotmd"
-version = "0.4.0"
+version = "0.5.0"
 source = { editable = "." }
 dependencies = [
     { name = "alive-progress" },
     { name = "click" },
+    { name = "httpx2" },
     { name = "jinja2" },
     { name = "platformdirs" },
     { name = "pyyaml" },
@@ -948,10 +949,11 @@ docs = [
 requires-dist = [
     { name = "alive-progress", specifier = ">=3.3.0" },
     { name = "click", specifier = ">=8.5.0" },
+    { name = "httpx2", specifier = ">=2.12.0,<3" },
     { name = "jinja2", specifier = ">=3.1.6" },
     { name = "platformdirs", specifier = ">=4.11.7" },
     { name = "pyyaml", specifier = ">=6.0.3" },
-    { name = "pyzotero", specifier = ">=1.15.1" },
+    { name = "pyzotero", specifier = ">=1.15.1,<2" },
     { name = "tomli-w", specifier = ">=1.2.0" },
 ]
 

@@ -113,6 +113,25 @@ def _require_metadata(content: bytes, name: str, version: str, label: str) -> No
         raise ArtifactError(f"{label} does not declare a Markdown description")
     if not metadata.get_payload().lstrip().startswith("# ZotMD"):
         raise ArtifactError(f"{label} does not contain the project README")
+    pyzotero_requirements = [
+        requirement
+        for requirement in metadata.get_all("Requires-Dist", [])
+        if requirement.casefold().startswith("pyzotero")
+    ]
+    if len(pyzotero_requirements) != 1 or pyzotero_requirements[0].replace(
+        " ", ""
+    ) not in {"pyzotero<2,>=1.15.1", "pyzotero>=1.15.1,<2"}:
+        raise ArtifactError(f"{label} has the wrong Pyzotero requirement")
+    httpx_requirements = [
+        requirement
+        for requirement in metadata.get_all("Requires-Dist", [])
+        if requirement.casefold().startswith("httpx2")
+    ]
+    if len(httpx_requirements) != 1 or httpx_requirements[0].replace(" ", "") not in {
+        "httpx2<3,>=2.12.0",
+        "httpx2>=2.12.0,<3",
+    }:
+        raise ArtifactError(f"{label} has the wrong httpx2 requirement")
 
 
 def _validate_sdist(path: Path, name: str, version: str) -> None:
@@ -153,6 +172,8 @@ def _validate_sdist(path: Path, name: str, version: str) -> None:
         f"{root}/SECURITY.md",
         f"{root}/pyproject.toml",
         f"{root}/src/zotmd/py.typed",
+        f"{root}/src/zotmd/models/paper.py",
+        f"{root}/src/zotmd/paper_source.py",
         f"{root}/src/zotmd/templates/default.md.j2",
         f"{root}/tools/check_release_artifacts.py",
         f"{root}/uv.lock",
@@ -182,6 +203,8 @@ def _validate_wheel(path: Path, name: str, version: str) -> None:
 
     required = {
         "zotmd/__init__.py",
+        "zotmd/models/paper.py",
+        "zotmd/paper_source.py",
         "zotmd/py.typed",
         "zotmd/templates/default.md.j2",
         f"{dist_info}/METADATA",

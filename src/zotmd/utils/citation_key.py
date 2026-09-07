@@ -4,15 +4,17 @@ import re
 
 
 class CitationKeyExtractor:
-    """Extracts Better BibTeX citation keys from Zotero item 'extra' fields."""
+    """Extract Better BibTeX citation keys from Zotero item data."""
 
-    # Pattern matches "Citation Key: <key>" in the extra field
-    CITATION_KEY_PATTERN = re.compile(r"Citation Key:\s*([^\n]+)", re.IGNORECASE)
+    CITATION_KEY_PATTERN = re.compile(
+        r"^[ \t]*Citation Key:[ \t]*([^\r\n]+?)[ \t]*$",
+        re.IGNORECASE,
+    )
 
     @staticmethod
     def extract(item: dict) -> str | None:
         """
-        Extract citation key from Zotero item's 'extra' field.
+        Prefer Zotero's native citation key and fall back to the Extra field.
 
         Args:
             item: Zotero item dictionary with 'data' key
@@ -30,15 +32,21 @@ class CitationKeyExtractor:
             None
         """
         try:
-            extra = item.get("data", {}).get("extra", "")
+            data = item.get("data", {})
+            native = data.get("citationKey")
+            if isinstance(native, str) and native.strip():
+                return native.strip()
+
+            extra = data.get("extra", "")
             if not extra:
                 return None
 
-            match = CitationKeyExtractor.CITATION_KEY_PATTERN.search(extra)
-            if match:
-                citation_key = match.group(1).strip()
-                # Return only if non-empty after stripping
-                return citation_key if citation_key else None
+            for line in extra.splitlines():
+                match = CitationKeyExtractor.CITATION_KEY_PATTERN.fullmatch(line)
+                if match:
+                    citation_key = match.group(1).strip()
+                    # Return only if non-empty after stripping
+                    return citation_key if citation_key else None
 
             return None
 
@@ -69,8 +77,8 @@ class CitationKeyExtractor:
         if not citation_key.strip():
             return False
 
-        # Check for newlines
-        if "\n" in citation_key or "\r" in citation_key:
+        # Reject every separator recognized by Python's universal line handling.
+        if citation_key.splitlines() != [citation_key]:
             return False
 
         # Check for forbidden filesystem characters
