@@ -4,7 +4,7 @@
 
 | Version | Supported |
 |---|---|
-| 0.5.x | Yes |
+| 0.5.x (unreleased) | No |
 | 0.4.x | Yes |
 | 0.3.x and earlier | No |
 

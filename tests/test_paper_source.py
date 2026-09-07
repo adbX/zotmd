@@ -88,6 +88,20 @@ class RecordingLocalClient:
         self.closed = True
 
 
+class PaginationChangingClient(RecordingLocalClient):
+    def __init__(self, *, versions: list[int]) -> None:
+        super().__init__(
+            versions=versions, top_items=(api_item("PARENT23", version=11),)
+        )
+        self._changed = False
+
+    def tagged_top_items(self, tag: str, expected_server_id: str):
+        if not self._changed:
+            self._changed = True
+            raise paper_source._PaginationChanged("synthetic total changed")
+        return super().tagged_top_items(tag, expected_server_id)
+
+
 @pytest.fixture
 def install_client(monkeypatch) -> Callable[[RecordingLocalClient], None]:
     def install(client: RecordingLocalClient) -> None:
@@ -656,9 +670,70 @@ def test_malformed_top_level_item_invalidates_snapshot(install_client, mutate):
     assert client.closed
 
 
+@pytest.mark.parametrize("location", ["top", "child"])
+def test_item_version_above_stable_library_invalidates_snapshot(
+    install_client, location
+):
+    parent = api_item("PARENT23", version=11 if location == "top" else 1)
+    children = (
+        {
+            "PARENT23": (
+                api_item(
+                    "ATTACH23", item_type="attachment", parent="PARENT23", version=11
+                ),
+            )
+        }
+        if location == "child"
+        else None
+    )
+    client = RecordingLocalClient(top_items=(parent,), children=children)
+    install_client(client)
+
+    with pytest.raises(ValueError, match="exceeds the stable library version"):
+        iter_papers(tag="paper-source")
+
+    assert client.closed
+
+
+def test_newer_item_version_retries_with_a_changed_library(install_client):
+    parent = api_item("PARENT23", version=11)
+    client = RecordingLocalClient(
+        versions=[10, 11, 11, 11],
+        top_items=(parent,),
+    )
+    install_client(client)
+
+    papers = tuple(iter_papers(tag="paper-source"))
+
+    assert len(papers) == 1
+    assert papers[0].version == 11
+    assert client.closed
+
+
+def test_pagination_change_retries_with_a_changed_library(install_client):
+    client = PaginationChangingClient(versions=[10, 11, 11, 11])
+    install_client(client)
+
+    papers = tuple(iter_papers(tag="paper-source"))
+
+    assert len(papers) == 1
+    assert papers[0].version == 11
+    assert client.closed
+
+
+def test_pagination_change_invalidates_a_stable_library(install_client):
+    client = PaginationChangingClient(versions=[10, 10])
+    install_client(client)
+
+    with pytest.raises(ValueError, match="within a stable library version"):
+        iter_papers(tag="paper-source")
+
+    assert client.closed
+
+
 def test_duplicate_and_wrong_parent_children_invalidate_snapshot(install_client):
     parent = api_item("PARENT23")
-    wrong_child = api_item("PARENT23", item_type="note", parent="MTHER234")
+    wrong_child = api_item("ATTACH23", item_type="note", parent="MTHER234")
     client = RecordingLocalClient(
         top_items=(parent,), children={"PARENT23": (wrong_child,)}
     )
@@ -701,6 +776,7 @@ def test_local_adapter_uses_only_characterized_get_requests(monkeypatch):
         headers = {
             "Zotero-Server-ID": "synthetic-server",
             "Last-Modified-Version": "42",
+            "Total-Results": "0",
         }
         path = request.url.path
         if path == "/api/users/0/items":
@@ -755,6 +831,8 @@ def test_local_adapter_uses_only_characterized_get_requests(monkeypatch):
     assert top_request.url.params["tag"] == "paper-source"
     assert top_request.url.params["limit"] == "100"
     assert top_request.url.params["includeTrashed"] == "0"
+    child_request = requests[2]
+    assert child_request.url.params["itemType"] == "attachment"
 
 
 def test_local_adapter_materializes_valid_pagination_on_the_same_endpoint(monkeypatch):
@@ -763,12 +841,15 @@ def test_local_adapter_materializes_valid_pagination_on_the_same_endpoint(monkey
 
     def handler(request: httpx2.Request) -> httpx2.Response:
         requests.append(request)
-        headers = {"Zotero-Server-ID": "synthetic-server"}
+        headers = {
+            "Zotero-Server-ID": "synthetic-server",
+            "Total-Results": "2",
+        }
         if request.url.params.get("start") is None:
             next_url = (
                 "http://localhost:23119/api/users/0/items/top"
                 "?tag=paper-source&limit=100&includeTrashed=0"
-                "&format=json&locale=en-US&start=100"
+                "&format=json&locale=en-US&start=1"
             )
             headers["Link"] = f'<{next_url}>; rel="next"'
             return httpx2.Response(200, headers=headers, json=[{"page": 1}])
@@ -794,11 +875,11 @@ def test_local_adapter_materializes_valid_pagination_on_the_same_endpoint(monkey
         "/api/users/0/items/top",
         "/api/users/0/items/top",
     ]
-    assert requests[1].url.params["start"] == "100"
+    assert requests[1].url.params["start"] == "1"
 
 
-@pytest.mark.parametrize("next_starts", [(100, 100), (100, 50)])
-def test_local_adapter_rejects_pagination_that_does_not_advance(
+@pytest.mark.parametrize("next_starts", [(1, 1), (1, 0), (1, 3)])
+def test_local_adapter_rejects_pagination_that_is_not_contiguous(
     monkeypatch, next_starts
 ):
     requests: list[httpx2.Request] = []
@@ -816,9 +897,10 @@ def test_local_adapter_rejects_pagination_that_does_not_advance(
             200,
             headers={
                 "Zotero-Server-ID": "synthetic-server",
+                "Total-Results": "3",
                 "Link": f'<{next_url}>; rel="next"',
             },
-            json=[],
+            json=[{"page": len(requests)}],
         )
 
     def client_factory(**kwargs):
@@ -830,12 +912,95 @@ def test_local_adapter_rejects_pagination_that_does_not_advance(
     monkeypatch.setattr(pyzotero_client_module.httpx2, "Client", client_factory)
     client = paper_source._LocalPaperClient()
     try:
-        with pytest.raises(ValueError, match="did not advance"):
+        with pytest.raises(ValueError, match="not contiguous"):
             client.tagged_top_items("paper-source", "synthetic-server")
     finally:
         client.close()
 
     assert len(requests) == 2
+
+
+def test_local_adapter_rejects_missing_final_page(monkeypatch):
+    real_client = httpx2.Client
+
+    def client_factory(**kwargs):
+        return real_client(
+            transport=httpx2.MockTransport(
+                lambda _request: httpx2.Response(
+                    200,
+                    headers={
+                        "Zotero-Server-ID": "synthetic-server",
+                        "Total-Results": "2",
+                    },
+                    json=[{"page": 1}],
+                )
+            ),
+            **kwargs,
+        )
+
+    monkeypatch.setattr(pyzotero_client_module.httpx2, "Client", client_factory)
+    client = paper_source._LocalPaperClient()
+    try:
+        with pytest.raises(ValueError, match="ended before Total-Results"):
+            client.tagged_top_items("paper-source", "synthetic-server")
+    finally:
+        client.close()
+
+
+def test_local_adapter_rejects_empty_intermediate_page(monkeypatch):
+    real_client = httpx2.Client
+
+    def client_factory(**kwargs):
+        return real_client(
+            transport=httpx2.MockTransport(
+                lambda _request: httpx2.Response(
+                    200,
+                    headers={
+                        "Zotero-Server-ID": "synthetic-server",
+                        "Total-Results": "1",
+                        "Link": (
+                            "<http://localhost:23119/api/users/0/items/top?"
+                            "tag=paper-source&limit=100&includeTrashed=0&start=0>; "
+                            'rel="next"'
+                        ),
+                    },
+                    json=[],
+                )
+            ),
+            **kwargs,
+        )
+
+    monkeypatch.setattr(pyzotero_client_module.httpx2, "Client", client_factory)
+    client = paper_source._LocalPaperClient()
+    try:
+        with pytest.raises(ValueError, match="empty intermediate page"):
+            client.tagged_top_items("paper-source", "synthetic-server")
+    finally:
+        client.close()
+
+
+@pytest.mark.parametrize("total", [None, "", "invalid", "-1"])
+def test_local_adapter_requires_valid_total_results(monkeypatch, total):
+    real_client = httpx2.Client
+    headers = {"Zotero-Server-ID": "synthetic-server"}
+    if total is not None:
+        headers["Total-Results"] = total
+
+    def client_factory(**kwargs):
+        return real_client(
+            transport=httpx2.MockTransport(
+                lambda _request: httpx2.Response(200, headers=headers, json=[])
+            ),
+            **kwargs,
+        )
+
+    monkeypatch.setattr(pyzotero_client_module.httpx2, "Client", client_factory)
+    client = paper_source._LocalPaperClient()
+    try:
+        with pytest.raises(ValueError, match="valid Total-Results"):
+            client.tagged_top_items("paper-source", "synthetic-server")
+    finally:
+        client.close()
 
 
 def test_local_adapter_rejects_pagination_to_another_endpoint(monkeypatch):
@@ -852,9 +1017,10 @@ def test_local_adapter_rejects_pagination_to_another_endpoint(monkeypatch):
             200,
             headers={
                 "Zotero-Server-ID": "synthetic-server",
+                "Total-Results": "1",
                 "Link": f'<{next_url}>; rel="next"',
             },
-            json=[],
+            json=[{"page": 1}],
         )
 
     def client_factory(**kwargs):

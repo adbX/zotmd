@@ -27,6 +27,8 @@ Run `zotmd sync` for subsequent incremental synchronizations. ZotMD detects meta
 
 ## Paper Discovery
 
+The paper-source API is part of the unreleased 0.5 source and is not included in the latest PyPI package yet. The installation command above will provide it only after 0.5 is published.
+
 Discover one complete snapshot by exact manual tag:
 
 ```python

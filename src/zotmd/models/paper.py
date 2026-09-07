@@ -102,7 +102,12 @@ def _open_no_follow(path: Path) -> int:
         raise _UnsafePathError("not-regular-file", "Local path is not a file")
 
     directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC
-    no_follow = getattr(os, "O_NOFOLLOW", 0)
+    try:
+        no_follow = os.O_NOFOLLOW
+    except AttributeError:
+        raise _UnsafePathError(
+            "unsafe-local-path", "Local filesystem cannot reject symbolic links"
+        ) from None
     current_fd = os.open(path.anchor, directory_flags)
     try:
         for component in components[:-1]:
@@ -118,6 +123,19 @@ def _open_no_follow(path: Path) -> int:
                 directory_flags | no_follow,
                 dir_fd=current_fd,
             )
+            try:
+                opened_directory_stat = os.fstat(next_fd)
+                if (
+                    opened_directory_stat.st_dev,
+                    opened_directory_stat.st_ino,
+                ) != (component_stat.st_dev, component_stat.st_ino):
+                    raise _UnsafePathError(
+                        "changed-local-file",
+                        "Local path changed while it was inspected",
+                    )
+            except BaseException:
+                os.close(next_fd)
+                raise
             os.close(current_fd)
             current_fd = next_fd
 
@@ -137,20 +155,22 @@ def _open_no_follow(path: Path) -> int:
             os.O_RDONLY | os.O_CLOEXEC | os.O_NONBLOCK | no_follow,
             dir_fd=current_fd,
         )
-        opened_stat = os.fstat(file_fd)
-        if not stat.S_ISREG(opened_stat.st_mode):
+        try:
+            opened_stat = os.fstat(file_fd)
+            if not stat.S_ISREG(opened_stat.st_mode):
+                raise _UnsafePathError(
+                    "not-regular-file", "Local path is not a regular file"
+                )
+            if (opened_stat.st_dev, opened_stat.st_ino) != (
+                file_stat.st_dev,
+                file_stat.st_ino,
+            ):
+                raise _UnsafePathError(
+                    "changed-local-file", "Local file changed while it was inspected"
+                )
+        except BaseException:
             os.close(file_fd)
-            raise _UnsafePathError(
-                "not-regular-file", "Local path is not a regular file"
-            )
-        if (opened_stat.st_dev, opened_stat.st_ino) != (
-            file_stat.st_dev,
-            file_stat.st_ino,
-        ):
-            os.close(file_fd)
-            raise _UnsafePathError(
-                "changed-local-file", "Local file changed while it was inspected"
-            )
+            raise
         return file_fd
     finally:
         os.close(current_fd)
@@ -256,7 +276,9 @@ class PdfAttachment:
                 final_stat.st_size,
                 final_stat.st_mtime_ns,
             )
-            if final_identity != opened_identity:
+            if final_identity != opened_identity or (
+                final_stat.st_ctime_ns != opened_stat.st_ctime_ns
+            ):
                 raise OSError(f"Attachment {self.key} changed while it was read")
         except OSError:
             raise OSError(f"Attachment {self.key} could not be read stably") from None

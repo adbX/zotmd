@@ -55,6 +55,10 @@ _EXTRA_DOI_PATTERN = re.compile(r"^\s*DOI\s*:\s*(.*?)\s*$", re.IGNORECASE)
 _EXTRA_ARXIV_PATTERN = re.compile(r"^\s*arXiv\s*:\s*(.*?)\s*$", re.IGNORECASE)
 
 
+class _PaginationChanged(ValueError):
+    pass
+
+
 class _LocalPaperClient:
     """Narrow, read-only adapter over a local-mode Pyzotero client."""
 
@@ -86,6 +90,7 @@ class _LocalPaperClient:
             http_client.close()
             raise
         if self._zot.client is None:
+            http_client.close()
             raise RuntimeError("Pyzotero did not construct an HTTP client")
 
     def _response_server_id(self, expected: str | None = None) -> str:
@@ -123,17 +128,36 @@ class _LocalPaperClient:
     ) -> tuple[dict[str, Any], ...]:
         records: list[dict[str, Any]] = []
         page = first_page
-        last_start = 0
+        expected_total: int | None = None
         while True:
             self._response_server_id(expected_server_id)
             if not isinstance(page, list) or not all(
                 isinstance(record, dict) for record in page
             ):
                 raise ValueError("Local API returned an invalid item-list envelope")
+            response = self._zot.request
+            if response is None:
+                raise ValueError("Local API response was not captured")
+            raw_total = response.headers.get("total-results")
+            if raw_total is None or _VERSION_PATTERN.fullmatch(raw_total) is None:
+                raise ValueError("Local API response has no valid Total-Results")
+            page_total = int(raw_total)
+            if expected_total is None:
+                expected_total = page_total
+            elif page_total != expected_total:
+                raise _PaginationChanged("Local API pagination changed Total-Results")
+            if len(records) + len(page) > expected_total:
+                raise ValueError("Local API pagination exceeded Total-Results")
             records.extend(page)
             links = self._zot.links
             if not isinstance(links, dict) or not links.get("next"):
+                if len(records) != expected_total:
+                    raise ValueError("Local API pagination ended before Total-Results")
                 return tuple(records)
+            if not page:
+                raise ValueError(
+                    "Local API pagination returned an empty intermediate page"
+                )
             next_link = links["next"]
             if not isinstance(next_link, str):
                 raise ValueError("Local API returned an unsafe pagination target")
@@ -158,9 +182,8 @@ class _LocalPaperClient:
             ):
                 raise ValueError("Local API returned an unsafe pagination target")
             next_start = int(next_params["start"][0])
-            if next_start <= last_start:
-                raise ValueError("Local API pagination did not advance")
-            last_start = next_start
+            if next_start != len(records):
+                raise ValueError("Local API pagination was not contiguous")
             page = self._zot.follow()
 
     def tagged_top_items(
@@ -189,6 +212,7 @@ class _LocalPaperClient:
             item_key,
             limit=_PAGE_SIZE,
             includeTrashed=0,
+            itemType="attachment",
         )
         return self._materialize_pages(
             first_page,
@@ -197,6 +221,7 @@ class _LocalPaperClient:
             expected_params={
                 "limit": str(_PAGE_SIZE),
                 "includeTrashed": "0",
+                "itemType": "attachment",
             },
         )
 
@@ -754,9 +779,18 @@ def _read_snapshot(client: _LocalPaperClient, tag: str) -> tuple[Paper, ...]:
     for _attempt in range(_MAX_ATTEMPTS):
         start_version, server_id = client.library_version(known_server_id)
         known_server_id = server_id
-        raw_top_items = client.tagged_top_items(tag, server_id)
+        try:
+            raw_top_items = client.tagged_top_items(tag, server_id)
+        except _PaginationChanged:
+            end_version, _end_server_id = client.library_version(server_id)
+            if end_version != start_version:
+                continue
+            raise ValueError(
+                "Local API pagination changed within a stable library version"
+            ) from None
 
         seen_keys: set[str] = set()
+        highest_item_version = 0
         library: tuple[str, int] | None = None
         selected: list[tuple[dict[str, Any], dict[str, Any], str, int]] = []
         for raw_item in raw_top_items:
@@ -768,13 +802,25 @@ def _read_snapshot(client: _LocalPaperClient, tag: str) -> tuple[Paper, ...]:
             )
             if library is None:
                 library = item_library
+            highest_item_version = max(highest_item_version, version)
             if _has_exact_manual_tag(data, tag):
                 selected.append((raw_item, data, key, version))
 
         child_sets = []
+        unstable_pagination = False
         for _item, _data, parent_key, _version in selected:
             children = []
-            for raw_child in client.children(parent_key, server_id):
+            try:
+                raw_children = client.children(parent_key, server_id)
+            except _PaginationChanged:
+                end_version, _end_server_id = client.library_version(server_id)
+                if end_version != start_version:
+                    unstable_pagination = True
+                    break
+                raise ValueError(
+                    "Local API pagination changed within a stable library version"
+                ) from None
+            for raw_child in raw_children:
                 child_data, child_library, child_key, child_version = _validate_item(
                     raw_child,
                     expected_parent=parent_key,
@@ -783,8 +829,11 @@ def _read_snapshot(client: _LocalPaperClient, tag: str) -> tuple[Paper, ...]:
                 )
                 if library is None:
                     library = child_library
+                highest_item_version = max(highest_item_version, child_version)
                 children.append((raw_child, child_data, child_key, child_version))
             child_sets.append(tuple(children))
+        if unstable_pagination:
+            continue
 
         if library is None:
             papers: tuple[Paper, ...] = ()
@@ -807,6 +856,10 @@ def _read_snapshot(client: _LocalPaperClient, tag: str) -> tuple[Paper, ...]:
 
         end_version, end_server_id = client.library_version(server_id)
         if end_server_id == server_id and end_version == start_version:
+            if highest_item_version > start_version:
+                raise ValueError(
+                    "Local API item version exceeds the stable library version"
+                )
             return tuple(
                 sorted(
                     papers,

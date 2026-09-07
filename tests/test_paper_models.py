@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import hashlib
 import os
+import stat
 from dataclasses import FrozenInstanceError
 from pathlib import Path
 
 import pytest
 
+import zotmd.models.paper as paper_model
 from zotmd import (
     AttachmentAvailability,
     Creator,
@@ -198,6 +200,113 @@ def test_fingerprint_rejects_parent_replaced_by_symlink(tmp_path):
     directory.symlink_to(moved, target_is_directory=True)
 
     with pytest.raises(OSError, match="safe local path"):
+        attachment.fingerprint()
+
+
+def test_inspection_rejects_directory_replaced_between_stat_and_open(
+    tmp_path, monkeypatch
+):
+    directory = tmp_path / "stored"
+    directory.mkdir()
+    path = directory / "paper.pdf"
+    path.write_bytes(b"original synthetic pdf")
+    moved = tmp_path / "moved"
+    real_open = os.open
+    replaced = False
+
+    def replacing_open(path, flags, mode=0o777, *, dir_fd=None):
+        nonlocal replaced
+        if path == "stored" and not replaced:
+            replaced = True
+            directory.rename(moved)
+            directory.mkdir()
+            (directory / "paper.pdf").write_bytes(b"replacement synthetic pdf")
+        return real_open(path, flags, mode, dir_fd=dir_fd)
+
+    monkeypatch.setattr(os, "open", replacing_open)
+
+    file_stat, problem = _inspect_local_file(path)
+
+    assert file_stat is None
+    assert problem == "changed-local-file"
+
+
+def test_inspection_does_not_follow_symlink_inserted_after_stat(tmp_path, monkeypatch):
+    path = tmp_path / "paper.pdf"
+    path.write_bytes(b"original synthetic pdf")
+    moved = tmp_path / "moved.pdf"
+    real_open = os.open
+    replaced = False
+
+    def replacing_open(path_component, flags, mode=0o777, *, dir_fd=None):
+        nonlocal replaced
+        if path_component == "paper.pdf" and not replaced:
+            replaced = True
+            path.rename(moved)
+            path.symlink_to(moved)
+        return real_open(path_component, flags, mode, dir_fd=dir_fd)
+
+    monkeypatch.setattr(os, "open", replacing_open)
+
+    file_stat, problem = _inspect_local_file(path)
+
+    assert file_stat is None
+    assert problem == "invalid-local-file"
+
+
+def test_inspection_closes_file_descriptor_when_fstat_fails(tmp_path, monkeypatch):
+    path = tmp_path / "paper.pdf"
+    path.write_bytes(b"synthetic pdf")
+    real_fstat = os.fstat
+    failed_descriptor = None
+
+    def failing_fstat(file_descriptor):
+        nonlocal failed_descriptor
+        file_stat = real_fstat(file_descriptor)
+        if stat.S_ISREG(file_stat.st_mode):
+            failed_descriptor = file_descriptor
+            raise OSError("synthetic fstat failure")
+        return file_stat
+
+    monkeypatch.setattr(paper_model.os, "fstat", failing_fstat)
+
+    file_stat, problem = _inspect_local_file(path)
+
+    assert file_stat is None
+    assert problem == "invalid-local-file"
+    assert failed_descriptor is not None
+    with pytest.raises(OSError):
+        real_fstat(failed_descriptor)
+
+
+def test_fingerprint_rejects_same_size_rewrite_with_restored_mtime(
+    tmp_path, monkeypatch
+):
+    content = b"a" * (2 * 1024 * 1024)
+    path = tmp_path / "paper.pdf"
+    path.write_bytes(content)
+    attachment = available_attachment(path)
+    original_stat = path.stat()
+    real_read = os.read
+    changed = False
+
+    def changing_read(file_descriptor, size):
+        nonlocal changed
+        chunk = real_read(file_descriptor, size)
+        if chunk and not changed:
+            changed = True
+            with path.open("r+b") as file:
+                file.seek(len(content) // 2)
+                file.write(b"b" * (len(content) // 2))
+            os.utime(
+                path,
+                ns=(original_stat.st_atime_ns, original_stat.st_mtime_ns),
+            )
+        return chunk
+
+    monkeypatch.setattr(paper_model.os, "read", changing_read)
+
+    with pytest.raises(OSError, match="could not be read stably"):
         attachment.fingerprint()
 
 

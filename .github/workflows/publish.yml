@@ -67,7 +67,10 @@ jobs:
               'import importlib.metadata as m, os, zotmd; assert m.version("zotmd") == zotmd.__version__ == os.environ["RELEASE_VERSION"]'
             "$venv_dir/bin/zotmd" --help
             env -u PYTHONPATH "$venv_dir/bin/pytest" -W error::ResourceWarning \
-              tests/test_core/test_sync_engine.py::test_full_sync_records_child_contract_and_each_attachment_identity
+              tests/test_core/test_sync_engine.py::test_full_sync_records_child_contract_and_each_attachment_identity \
+              tests/test_paper_models.py \
+              tests/test_paper_source.py \
+              tests/test_public_api.py
           done
       - name: Check publish inputs without uploading
         run: uv publish --dry-run --username dry-run --password dry-run "$RUNNER_TEMP/zotmd-dist"/*

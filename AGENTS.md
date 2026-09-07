@@ -33,7 +33,7 @@ The package supports Python 3.13 and 3.14. User documentation lives in `docs/` a
 - User text is preserved only between `<!-- zotmd:notes:start -->` and `<!-- zotmd:notes:end -->`. Old percent-style or generic begin/end markers are not recognized.
 - A managed item that loses its citation key remains active and unchanged. It follows removal behavior only after Zotero reports the item deleted.
 - `iter_papers()` uses only Zotero 10's loopback local API. It loads no ZotMD configuration or state, requests no credential or write authorization, and returns no partial snapshot.
-- Paper discovery handles only already-local stored PDFs. The ZotMD process does not contact WebDAV, download files, follow symlinks, read notes or annotations, or read PDF bytes before `fingerprint()`. Zotero Desktop may perform its own attachment hash while serializing local API metadata.
+- Paper discovery handles only already-local stored PDFs. The ZotMD process does not contact WebDAV, download files, follow symlinks, retain or expose note or annotation content, or read PDF bytes before `fingerprint()`. Zotero Desktop may perform its own attachment hash while serializing local API metadata.
 - Local item versions are scoped by `Zotero-Server-ID`; stable snapshots require matching raw start and end version and server headers.
 
 ## Packaging

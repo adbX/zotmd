@@ -59,6 +59,25 @@ def test_extract_citation_key_with_whitespace():
     assert CitationKeyExtractor.extract(item) == "whitespace2024"
 
 
+def test_extract_citation_key_from_universal_newlines():
+    separators = ("\r", "\r\n", "\x85", "\u2028", "\u2029")
+    for separator in separators:
+        item = {
+            "data": {
+                "extra": f"DOI: 10.0000/example{separator}"
+                f"Citation Key: separated2026{separator}PMID: 12345"
+            }
+        }
+
+        assert CitationKeyExtractor.extract(item) == "separated2026"
+
+
+def test_validate_rejects_universal_newlines():
+    item = {"data": {"citationKey": "unsafe\u2028key"}}
+
+    assert CitationKeyExtractor.extract_and_validate(item) is None
+
+
 def test_extract_citation_key_missing():
     """Test extraction when citation key is missing."""
     item = {"data": {"extra": "No citation key here"}}

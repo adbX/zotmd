@@ -8,7 +8,7 @@ class CitationKeyExtractor:
 
     CITATION_KEY_PATTERN = re.compile(
         r"^[ \t]*Citation Key:[ \t]*([^\r\n]+?)[ \t]*$",
-        re.IGNORECASE | re.MULTILINE,
+        re.IGNORECASE,
     )
 
     @staticmethod
@@ -41,11 +41,12 @@ class CitationKeyExtractor:
             if not extra:
                 return None
 
-            match = CitationKeyExtractor.CITATION_KEY_PATTERN.search(extra)
-            if match:
-                citation_key = match.group(1).strip()
-                # Return only if non-empty after stripping
-                return citation_key if citation_key else None
+            for line in extra.splitlines():
+                match = CitationKeyExtractor.CITATION_KEY_PATTERN.fullmatch(line)
+                if match:
+                    citation_key = match.group(1).strip()
+                    # Return only if non-empty after stripping
+                    return citation_key if citation_key else None
 
             return None
 
@@ -76,8 +77,8 @@ class CitationKeyExtractor:
         if not citation_key.strip():
             return False
 
-        # Check for newlines
-        if "\n" in citation_key or "\r" in citation_key:
+        # Reject every separator recognized by Python's universal line handling.
+        if citation_key.splitlines() != [citation_key]:
             return False
 
         # Check for forbidden filesystem characters

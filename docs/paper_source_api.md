@@ -2,6 +2,8 @@
 
 ZotMD exposes a read-only Python API for discovering papers and already-local PDFs in one personal Zotero 10 library. This API is separate from `zotmd sync`: it uses Zotero Desktop's loopback HTTP API, needs no Zotero Web API key or internet connection, and does not load ZotMD configuration or state.
 
+This API is currently part of the unreleased 0.5 source and is not included in the latest PyPI package yet.
+
 ## Requirements
 
 - Zotero 10 is running with **Settings > Advanced > Allow other applications on this computer to communicate with Zotero** enabled.
@@ -30,6 +32,7 @@ The supported package-root imports are:
 
 ```python
 from zotmd import (
+    __version__,
     AttachmentAvailability,
     Creator,
     Diagnostic,
@@ -99,7 +102,7 @@ An attachment is a PDF candidate when its normalized MIME type is `application/p
 | `unsupported` | Zotero reports an unknown attachment mode |
 | `invalid` | The URL, PDF signals, MD5 metadata, path, or local file is unsafe |
 
-`fingerprint()` reopens the path without following any component symlink. It verifies the discovered device, inode, size, and nanosecond modification time before and after one streaming read, calculates SHA-256 and MD5 together, then checks Zotero's MD5 when supplied. Each call performs a fresh validated read and returns `FileFingerprint(sha256, md5, size, mtime_ns, device, inode)`.
+`fingerprint()` reopens the path without following any component symlink. It verifies the discovered device, inode, size, and nanosecond modification time before and after one streaming read, calculates SHA-256 and MD5 together, then checks Zotero's MD5 when supplied. Each call performs a fresh validated read and returns `FileFingerprint(sha256, md5, size, mtime_ns, device, inode)`. The result describes that completed read; a consumer that delays file use or performs long-running work must fingerprint again before accepting its output if source changes matter.
 
 ## Diagnostics
 
@@ -146,4 +149,4 @@ If the library version changes, ZotMD discards all collected records and makes u
 
 Invalid call arguments and malformed snapshots raise built-in `TypeError` or `ValueError`. Four unstable attempts raise `RuntimeError`. A file that differs from its discovered identity or changes during hashing raises `OSError`; a Zotero MD5 mismatch raises `ValueError`. Connection, transport, status, disabled-local-API, and server-ID mismatch errors propagate from Pyzotero and its HTTP client.
 
-Paper discovery performs only loopback GET requests for library versions, tagged top-level items, children, and the conditional `/file/view/url` fallback. It does not load configuration, run synchronization, inspect `sync.sqlite`, read annotations or notes, call the Zotero Web API, authenticate to WebDAV, download files, or request local write authorization. Zotero-native note children and ZotMD-generated Markdown notes are outside this version's API.
+Paper discovery performs only loopback GET requests for library versions, tagged top-level items, attachment children, and the conditional `/file/view/url` fallback. It does not load configuration, run synchronization, inspect `sync.sqlite`, retain or expose note or annotation content, call the Zotero Web API, authenticate to WebDAV, download files, or request local write authorization. Tagged top-level notes remain visible only as unsupported-item diagnostics; Zotero-native note children and ZotMD-generated Markdown notes are outside this version's API.
