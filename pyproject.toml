@@ -84,7 +84,7 @@ dev = [
     "pytest>=9.1.1",
     "pytest-cov>=7.1.0",
     "ruff>=0.16.5",
-    "rumdl>=0.2.63",
+    "rumdl>=0.2.69",
 ]
 docs = [
     "zensical>=0.0.58",
