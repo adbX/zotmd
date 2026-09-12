@@ -87,7 +87,7 @@ dev = [
     "rumdl>=0.2.63",
 ]
 docs = [
-    "zensical>=0.0.58",
+    "zensical>=0.0.60",
 ]
 
 [tool.ruff]
