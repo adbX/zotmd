@@ -2,7 +2,7 @@
 
 This changelog records user-visible changes to ZotMD.
 
-## 0.5.0 - Unreleased
+## 0.5.0 - 2026-09-16
 
 ### Added
 
