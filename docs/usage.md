@@ -1,19 +1,21 @@
-# Usage
+# Commands
 
-## Commands
+## Command list
 
 | Command | Purpose |
 |---|---|
-| `zotmd config` | Create or update configuration interactively |
+| `zotmd config` | Create or update configuration |
 | `zotmd init` | Alias for `zotmd config` |
-| `zotmd sync` | Reconcile the library incrementally |
+| `zotmd sync` | Synchronize incrementally |
 | `zotmd status` | Test connectivity and show read-only state statistics |
 
-Global verbose logging precedes the command: `zotmd -v sync`.
+Verbose logging precedes the command:
 
-The local paper-source API is a Python interface rather than a CLI command. It does not alter any command in this table or reuse their configuration and state.
+```bash
+zotmd -v sync
+```
 
-## Sync Options
+## Sync options
 
 ```text
 zotmd sync [--full] [--dry-run] [--no-progress]
@@ -25,76 +27,108 @@ zotmd sync [--full] [--dry-run] [--no-progress]
 | `--dry-run` | Report planned work without changing files or state |
 | `--no-progress` | Suppress progress displays for scripts and logs |
 
-The default incremental operation fetches changed top-level items plus all current attachments and annotations. A deterministic child signature catches annotation additions, edits, deletions, same-count changes, and attachment-only changes even when Zotero does not return the parent as modified.
+## Common runs
 
-Web API calls remain serial. Pyzotero follows Zotero's server-provided backoff and retry instructions.
-
-## Local Paper Discovery
-
-Call `iter_papers(tag="paper-source")` while Zotero 10 is running with local API access enabled. The call makes one initial complete snapshot attempt plus at most three retries if the local library version changes. It returns no records until the full snapshot is stable and validated.
-
-Discovery needs no Web API key or internet connection. It ignores child notes, annotations, HTML snapshots, and ordinary non-PDF attachments. It does not run synchronization, inspect SQLite state or generated notes, contact WebDAV, or download a PDF. See the [local paper-source API](paper_source_api.md) for the record and failure contracts.
-
-## Results and Failures
-
-Sync output reports processed, created, updated, renamed, removed, permanently deleted, relocated, and skipped items. It also reports annotation totals, missing citation keys, path collisions, and errors. Dry-run counters describe planned actions.
-
-Items without a Better BibTeX citation key are nonfatal eligibility skips. These conditions are actionable failures:
-
-- Malformed API or cached records.
-- Sanitized, case-insensitive, or Unicode-normalized target collisions.
-- Template rendering failures.
-- Missing managed files or filesystem permission failures.
-- Managed notes changed concurrently after preflight.
-- Failed moves, writes, removals, deletions, or state updates.
-
-ZotMD can retain successful per-item work after a partial failure, but it does not advance the library or template checkpoint. The next run retries the incomplete interval. Any actionable failure returns exit status 1.
-
-## Common Workflows
-
-Preview a normal incremental sync:
+Preview an incremental sync:
 
 ```bash
 zotmd sync --dry-run
 ```
 
-Perform it after reviewing the result:
+Apply it:
 
 ```bash
 zotmd sync
 ```
 
-Preview and perform a complete rerender:
+Preview and apply a complete rerender:
 
 ```bash
 zotmd sync --full --dry-run
 zotmd sync --full
 ```
 
-Use plain output in automation:
+Plain output for automation:
 
 ```bash
-if zotmd sync --no-progress; then
-    printf '%s\n' "ZotMD sync completed"
-else
-    printf '%s\n' "ZotMD sync failed" >&2
-fi
+zotmd sync --no-progress
 ```
 
-## Removals and Renames
+## Incremental behavior
 
-The default `deletion_behavior = "move"` relocates a note to `removed/` only after the source and destination pass preflight. `delete` permanently removes the actual path recorded in state. A failed operation leaves the item active and the checkpoint pending.
+ZotMD detects:
 
-When a Better BibTeX citation key changes, ZotMD reads the stored old path, preserves the Notes region, claims the sanitized new target without overwriting it, and updates state only after the file operation succeeds.
+- Top-level metadata changes
+- Added, edited, or deleted annotations
+- Attachment-only changes
+- Better BibTeX citation-key renames
+- Deleted Zotero items
+- Template changes
+
+Web API calls remain serial and follow Zotero's server-provided backoff and retry instructions.
+
+## Results and failures
+
+Output counts:
+
+- Processed and skipped items
+- Created, updated, and renamed notes
+- Moved or permanently deleted notes
+- Relocated output files
+- Annotations
+- Missing citation keys
+- Collisions and errors
+
+Missing citation keys are nonfatal skips. Previously managed items that lose a key remain active and unchanged.
+
+Exit status 1:
+
+- Malformed API or cached record
+- Sanitized, case-insensitive, or Unicode-normalized filename collision
+- Template rendering error
+- Missing managed file
+- Permission or filesystem error
+- Managed note changed after preflight
+- Failed move, write, removal, deletion, or state update
+
+Successful item work may remain after a partial failure. The library and template checkpoints remain pending, so the next run retries the incomplete interval.
+
+## Removals and renames
+
+With `deletion_behavior = "move"`:
+
+- Preflight source and destination
+- Move the note to `removed/`
+- Refuse overwrites
+
+With `deletion_behavior = "delete"`:
+
+- Delete the exact state-managed path
+- Record success only after deletion
+
+After a citation-key change:
+
+- Read the stored old path
+- Preserve the Notes area
+- Claim the sanitized new target
+- Refuse overwrites
+- Update state after the rename succeeds
 
 ## Status
 
-`zotmd status` tests the Web API connection and opens existing SQLite state read-only. It reports configuration paths, active and removed item counts, annotation count, synchronization timestamps, and the last completed library version. It does not create or migrate a database.
+`zotmd status`:
 
-## Exit Status
+- Tests the Web API connection
+- Opens existing SQLite state read-only
+- Shows configuration paths
+- Counts active and removed items and annotations
+- Shows synchronization times and the last completed library version
+- Never creates or migrates a database
+
+## Exit status
 
 | Status | Meaning |
 |---|---|
-| 0 | The command completed without actionable errors |
-| 1 | Configuration, connection, reconciliation, or partial-sync failure |
-| 2 | Invalid command-line syntax or options |
+| 0 | Completed without actionable errors |
+| 1 | Configuration, connection, synchronization, or partial-sync failure |
+| 2 | Invalid command syntax or options |

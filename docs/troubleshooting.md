@@ -1,80 +1,121 @@
 # Troubleshooting
 
-## Authentication or Connection Failure
+## Synchronization cannot connect
 
-Confirm that the configured ID is the numeric user ID for a personal library and that the API key has personal-library read access. Group libraries are not supported. Create a replacement key at [Zotero settings](https://www.zotero.org/settings/keys/new) if needed.
-
-`ZOTMD_API_KEY` overrides the stored key. Check whether an old environment value is active before replacing the configuration:
+- Confirm the numeric user ID belongs to a personal library.
+- Confirm the API key has personal-library read access.
+- Remove group and write access from the key.
+- Check for an old environment value:
 
 ```bash
 test -n "$ZOTMD_API_KEY" && printf '%s\n' "ZOTMD_API_KEY is set"
 zotmd status
 ```
 
-ZotMD requires internet access to the Zotero Web API. Zotero Desktop and its local API setting do not affect the connection.
+Synchronization needs internet access. Zotero Desktop and its local API setting do not affect it.
 
-## Local Paper Discovery Cannot Connect
+## Paper discovery cannot connect
 
-The local paper-source API has the opposite runtime boundary from synchronization: Zotero 10 must be running, and **Settings > Advanced > Allow other applications on this computer to communicate with Zotero** must be enabled. Discovery uses no API key and needs no internet connection.
+- Start Zotero 10.
+- Enable **Settings > Advanced > Allow other applications on this computer to communicate with Zotero**.
+- Keep port 23119 on the local machine.
 
-Keep Zotero's port 23119 bound to the local machine. Do not forward it over SSH or expose it through a proxy because local API reads are unauthenticated.
+Paper discovery uses no API key and needs no internet connection. Do not forward the unauthenticated local API over SSH or expose it through a proxy.
 
-## A Paper PDF Is Unavailable
+## A paper PDF is unavailable
 
-The `local-file-unavailable` diagnostic means Zotero reported a stored PDF path but no file exists there. This includes WebDAV attachments that Zotero has not downloaded. Open or otherwise download the attachment through Zotero Desktop, then create a new snapshot. ZotMD never authenticates to WebDAV or triggers the download itself.
+`local-file-unavailable` means Zotero reported a stored PDF path but the file is not local.
 
-Linked attachments, symbolic links, empty files, directories, malformed file URLs, MIME and extension disagreements, and multiple PDF candidates have separate blocking diagnostics. Do not pass an attachment path to another program unless `primary_pdf` is present and its explicit `fingerprint()` call succeeds.
+1. Open or download the attachment through Zotero Desktop.
+2. Call `iter_papers()` again for a new snapshot.
 
-## Items Without Citation Keys
+ZotMD never authenticates to WebDAV or starts a download.
 
-Install Better BibTeX, refresh the item's citation key in Zotero, wait for Zotero's Web API state to update, then run `zotmd sync` again. Missing keys are reported but do not fail the synchronization. If a previously managed item loses its key, ZotMD keeps its note active and unchanged until the key returns or the item is deleted from Zotero.
+Do not pass a path to another program unless `primary_pdf` is present and `fingerprint()` succeeds.
 
-## Annotations Are Missing
+## An item has no citation key
 
-Annotations must exist as Zotero annotation records beneath an attachment. ZotMD fetches attachment and annotation records from the Web API and links each annotation to its own attachment key. It does not extract annotations embedded only in PDF bytes or download PDFs.
+1. Install Better BibTeX.
+2. Refresh the item's citation key in Zotero.
+3. Wait for the Zotero Web API to update.
+4. Run `zotmd sync` again.
 
-Run a full preview to compare the reported annotation count:
+A missing key does not fail synchronization. A previously managed item remains active and unchanged until the key returns or Zotero reports the item deleted.
+
+## Annotations are missing
+
+ZotMD reads Zotero annotation records beneath attachments. It does not extract annotations embedded only in PDF bytes.
+
+Compare a full preview:
 
 ```bash
 zotmd sync --full --dry-run
 ```
 
-## Target Collision
+## Filename collision
 
-Two citation keys can become the same safe filename after forbidden characters are removed, length limits are applied, or macOS case and Unicode aliases are considered. ZotMD refuses every affected item rather than choosing a suffix or overwriting a note.
+Different citation keys can resolve to the same safe filename after:
 
-Assign distinct Better BibTeX citation keys, then rerun the dry run. Also remove or relocate any unmanaged file occupying a planned target only after confirming its ownership.
+- Forbidden-character removal
+- Length limits
+- macOS case folding
+- Unicode normalization
 
-## Managed File Is Missing
+ZotMD refuses every affected item. Assign distinct Better BibTeX citation keys, then rerun the dry run.
 
-ZotMD refuses to recreate a missing managed note automatically because doing so could hide an unavailable volume and lose user Notes. Restore the file or output mount from backup. If the file was intentionally removed, archive the state database and perform a reviewed fresh full sync.
+For an unmanaged file at a planned target, confirm ownership before moving or removing it.
 
-## Legacy or Incompatible State
+## A managed note is missing
 
-ZotMD 0.4 refuses a 0.3 database without modifying it and rejects the old `zotero.library_type` configuration key. Archive both the database and output, then rerun configuration for the personal-library-only schema before creating fresh state:
+ZotMD does not recreate a missing managed note automatically. This avoids hiding an unavailable volume or losing user Notes.
 
-```bash
-mv "$HOME/Library/Application Support/zotmd/sync.sqlite" \
-   "$HOME/Library/Application Support/zotmd/sync.0.3-backup.sqlite"
-zotmd config
-zotmd sync --full --dry-run
-zotmd sync --full
+- Restore the file or output mount from backup.
+- If removal was intentional, archive the state database and run a reviewed fresh full sync.
+
+## Custom template failure
+
+- Confirm the configured file exists.
+- Use only the [documented template context](generated_notes.md#custom-body-templates).
+- Include the exact Notes markers when user text must survive.
+- Use static names for `include`, `extends`, and `import`.
+
+Test the built-in body by setting:
+
+```toml
+[advanced]
+template_path = ""
 ```
 
-Do not delete the old output. Rename it to a dated sibling backup, choose a distinct empty output for the first 0.4 run, validate the generated corpus, and require a second incremental run to be a no-op.
+Show a traceback without changing notes or state:
 
-## Template Failure
+```bash
+zotmd -v sync --dry-run
+```
 
-The configured custom template must exist when configuration is loaded and must use only the documented custom context. Undefined variables are errors. Custom templates own only the body and must emit the exact Notes boundaries if user text should survive rerenders.
+## Permission, move, or delete failure
 
-Temporarily set `advanced.template_path = ""` to test the built-in body. Use `zotmd -v sync --dry-run` for an error traceback without changing notes or state.
+- Check that output and source parent directories are writable.
+- Check for an existing same-named file in `removed/`.
+- Restore from backup after a failed permanent deletion.
+- Rerun after resolving the reported error; the checkpoint remains pending.
 
-## Permission, Move, or Delete Failure
+ZotMD refuses overwrites and refuses mutation when a managed note changes after preflight.
 
-Check that the output and source parent directories are writable. ZotMD preflights operations, writes through durable temporary sibling files, refuses overwrites, and supports output moves across filesystems. It also refuses a mutation if a managed note changes after preflight. A failed operation leaves the checkpoint pending.
+## Report an issue
 
-With `deletion_behavior = "move"`, check for an existing same-named file in `removed/`. With `delete`, restore from backup if a later external failure occurs; permanent deletion should be selected only with a current backup.
+Run:
 
-## Reporting an Issue
+```bash
+zotmd -v sync --dry-run --no-progress
+```
 
-Run `zotmd -v sync --dry-run --no-progress` and include the error, ZotMD version, operating system, and reproduction steps in a [GitHub issue](https://github.com/adbX/zotmd/issues). Remove API keys, local paths, private titles, and annotation content before sharing output. Never attach `config.toml` or `sync.sqlite`.
+Include:
+
+- Error text
+- ZotMD version
+- Operating system
+- Reproduction steps
+
+Remove API keys, local paths, private titles, and annotation content. Never attach `config.toml` or `sync.sqlite`.
+
+[Open a GitHub issue](https://github.com/adbX/zotmd/issues)
