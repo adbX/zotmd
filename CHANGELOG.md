@@ -2,6 +2,12 @@
 
 This changelog records user-visible changes to ZotMD.
 
+## 0.5.1 - 2026-09-16
+
+### Changed
+
+- Corrected the package description to state that the paper-source API is included in the PyPI package.
+
 ## 0.5.0 - 2026-09-16
 
 ### Added
