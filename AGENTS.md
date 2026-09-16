@@ -1,6 +1,6 @@
 # AGENTS.md
 
-ZotMD 0.5.0 synchronizes one personal Zotero library to generated Markdown notes and exposes a separate immutable local paper-source API. Group libraries, linked-file copying, and bidirectional synchronization are out of scope.
+ZotMD 0.5.1 synchronizes one personal Zotero library to generated Markdown notes and exposes a separate immutable local paper-source API. Group libraries, linked-file copying, and bidirectional synchronization are out of scope.
 
 ## Development
 

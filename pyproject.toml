@@ -1,6 +1,6 @@
 [project]
 name = "zotmd"
-version = "0.5.0"
+version = "0.5.1"
 description = "Sync Zotero notes and discover already-local papers through a typed API"
 readme = "README.md"
 authors = [
