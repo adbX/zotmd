@@ -7,6 +7,7 @@ This changelog records user-visible changes to ZotMD.
 ### Changed
 
 - Corrected the package description to state that the paper-source API is included in the PyPI package.
+- Reorganized public documentation into separate synchronization and paper-discovery paths, with a concise README, side-by-side landing cards, and focused reference pages so readers can choose a workflow before opening details. Light mode is now the site default.
 
 ## 0.5.0 - 2026-09-16
 

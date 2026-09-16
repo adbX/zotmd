@@ -1,6 +1,6 @@
 [project]
-site_name = "ZotMD Documentation"
-site_description = "Sync Zotero notes and discover already-local papers through a typed API"
+site_name = "ZotMD"
+site_description = "Sync a personal Zotero library and PDF annotations to Markdown"
 site_author = "Adhithya Bhaskar"
 site_url = "https://adbx.github.io/zotmd/"
 copyright = """
@@ -10,10 +10,17 @@ Copyright &copy; 2025-2026 Adhithya Bhaskar
 # Read more: https://zensical.org/docs/setup/navigation/
 nav = [
   { "Home" = "index.md" },
-  { "Getting Started" = "getting_started.md" },
-  { "Local Paper-Source API" = "paper_source_api.md" },
-  { "Configuration" = "configuration.md" },
-  { "Usage" = "usage.md" },
+  { "Synchronize notes" = [
+    { "Quick start" = "getting_started.md" },
+    { "Configuration" = "configuration.md" },
+    { "Commands" = "usage.md" },
+    { "Generated notes" = "generated_notes.md" },
+  ] },
+  { "Discover papers" = [
+    { "Quick start" = "paper_discovery.md" },
+    { "Records" = "paper_source_api.md" },
+    { "PDFs and failures" = "paper_files.md" },
+  ] },
   { "Troubleshooting" = "troubleshooting.md" },
 ]
 # Read more: https://zensical.org/docs/customization/#additional-css
@@ -93,16 +100,16 @@ features = [
 # https://zensical.org/docs/setup/colors/
 
 [[project.theme.palette]]
-scheme = "slate"
-toggle.icon = "lucide/moon"
-toggle.name = "Switch to light mode"
+scheme = "default"
+toggle.icon = "lucide/sun"
+toggle.name = "Switch to dark mode"
 palette.primary = "brown"
 palette.accent = "amber"
 
 [[project.theme.palette]]
-scheme = "default"
-toggle.icon = "lucide/sun"
-toggle.name = "Switch to dark mode"
+scheme = "slate"
+toggle.icon = "lucide/moon"
+toggle.name = "Switch to light mode"
 palette.primary = "brown"
 palette.accent = "amber"
 # ----------------------------------------------------------------------------
@@ -116,6 +123,7 @@ text = "Fira Sans"
 code = "Fira Code"
 
 [project.markdown_extensions.attr_list]
+[project.markdown_extensions.md_in_html]
 [project.markdown_extensions.pymdownx.details]
 [project.markdown_extensions.pymdownx.superfences]
 [project.markdown_extensions.pymdownx.tabbed]
