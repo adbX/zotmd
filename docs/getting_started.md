@@ -62,7 +62,7 @@ Continue with [Configuration](configuration.md) and [Usage](usage.md).
 
 ## Using the Paper-Source API
 
-The paper-source API is part of the unreleased 0.5 source and is not included in the latest PyPI package yet. `uv tool install zotmd` will provide it only after 0.5 is published.
+The paper-source API is included in ZotMD 0.5.0 and later. `uv tool install zotmd` installs it with the package.
 
 Paper discovery is independent of the setup above. It does not read `config.toml`, `sync.sqlite`, generated notes, or the Web API key. Start Zotero 10, enable local API access in its advanced settings, ensure the selected top-level papers have one exact manual tag, and call `iter_papers(tag="paper-source")` from Python.
 

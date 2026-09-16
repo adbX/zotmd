@@ -2,7 +2,7 @@
 
 ZotMD exposes a read-only Python API for discovering papers and already-local PDFs in one personal Zotero 10 library. This API is separate from `zotmd sync`: it uses Zotero Desktop's loopback HTTP API, needs no Zotero Web API key or internet connection, and does not load ZotMD configuration or state.
 
-This API is currently part of the unreleased 0.5 source and is not included in the latest PyPI package yet.
+The paper-source API is included in ZotMD 0.5.0 and later on PyPI.
 
 ## Requirements
 
