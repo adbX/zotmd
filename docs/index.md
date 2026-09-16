@@ -2,7 +2,7 @@
 
 ZotMD synchronizes a personal Zotero library and PDF annotations to Obsidian-native Markdown. It also exposes an immutable local API for discovering tagged papers and already-local PDFs through Zotero Desktop.
 
-The paper-source API is currently part of the unreleased 0.5 source. The latest PyPI package does not include it yet.
+ZotMD 0.5.0 and later include the paper-source API in the PyPI package.
 
 ## What It Does
 
